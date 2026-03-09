@@ -1,0 +1,22 @@
+{
+  "US": {"risk": 15, "label": "Low", "note": "Strong regulatory oversight (FDA), diversified manufacturing base"},
+  "IN": {"risk": 55, "label": "Medium", "note": "High volume API supplier, periodic FDA inspection failures, infrastructure variability"},
+  "CN": {"risk": 65, "label": "High", "note": "Major API dependency, geopolitical tensions, limited inspection transparency"},
+  "DE": {"risk": 12, "label": "Low", "note": "Strong GMP compliance, EU regulatory framework"},
+  "GB": {"risk": 18, "label": "Low", "note": "MHRA oversight, post-Brexit regulatory adjustments ongoing"},
+  "CA": {"risk": 14, "label": "Low", "note": "Health Canada oversight, close alignment with FDA standards"},
+  "CH": {"risk": 10, "label": "Low", "note": "Swissmedic oversight, high manufacturing standards"},
+  "FR": {"risk": 16, "label": "Low", "note": "ANSM oversight, strong EU GMP compliance"},
+  "IT": {"risk": 20, "label": "Low", "note": "AIFA oversight, growing generic manufacturing hub"},
+  "JP": {"risk": 13, "label": "Low", "note": "PMDA oversight, strict quality standards"},
+  "KR": {"risk": 22, "label": "Low", "note": "MFDS oversight, growing biologics capacity"},
+  "IL": {"risk": 25, "label": "Low", "note": "Strong generic manufacturing, geopolitical considerations"},
+  "BR": {"risk": 40, "label": "Medium", "note": "ANVISA oversight, growing domestic capacity"},
+  "MX": {"risk": 38, "label": "Medium", "note": "COFEPRIS oversight, nearshoring opportunities"},
+  "IE": {"risk": 11, "label": "Low", "note": "HPRA oversight, major biopharma manufacturing hub"},
+  "DK": {"risk": 10, "label": "Low", "note": "Danish Medicines Agency oversight, strong insulin production"},
+  "SE": {"risk": 11, "label": "Low", "note": "MPA oversight, reliable manufacturing base"},
+  "FI": {"risk": 12, "label": "Low", "note": "Fimea oversight, stable regulatory environment"},
+  "ZA": {"risk": 42, "label": "Medium", "note": "SAHPRA oversight, key African manufacturing hub"},
+  "AU": {"risk": 15, "label": "Low", "note": "TGA oversight, strong blood products manufacturing"}
+}
