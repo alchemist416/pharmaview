@@ -5,7 +5,7 @@ import PanelCard from '@/components/layout/PanelCard';
 import TickerTape from '@/components/layout/TickerTape';
 import WorldMap from '@/components/map/WorldMap';
 import { CountryMapData, Recall } from '@/lib/types';
-import { AlertTriangle, Shield, Globe, Search } from 'lucide-react';
+import { AlertTriangle, Shield, Globe, Search, Bug, ChevronDown, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
 
 export default function Dashboard() {
@@ -16,10 +16,15 @@ export default function Dashboard() {
   const [lastUpdated, setLastUpdated] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
   const [drugSearch, setDrugSearch] = useState('');
+  const [debugOpen, setDebugOpen] = useState(false);
+  const [debugData, setDebugData] = useState<Record<string, unknown> | null>(null);
+  const [apiDebug, setApiDebug] = useState<Record<string, unknown>>({});
 
   useEffect(() => {
     async function fetchData() {
       const errs: string[] = [];
+      const debugInfo: Record<string, unknown> = {};
+
       try {
         const [mapRes, shortageRes, recallRes] = await Promise.allSettled([
           fetch('/api/map-data'),
@@ -27,27 +32,46 @@ export default function Dashboard() {
           fetch('/api/recalls?limit=20&days=90'),
         ]);
 
-        if (mapRes.status === 'fulfilled' && mapRes.value.ok) {
+        if (mapRes.status === 'fulfilled') {
           const data = await mapRes.value.json();
-          setCountryData(data.countries || []);
+          debugInfo.map = { status: mapRes.value.status, debug: data.debug, resultCount: (data.countries || []).length };
+          if (mapRes.value.ok) {
+            setCountryData(data.countries || []);
+          } else {
+            errs.push(`Map: ${data.error || mapRes.value.status}`);
+          }
         } else {
+          debugInfo.map = { error: mapRes.reason?.message || 'Network error' };
           errs.push('Map data unavailable');
         }
 
-        if (shortageRes.status === 'fulfilled' && shortageRes.value.ok) {
+        if (shortageRes.status === 'fulfilled') {
           const data = await shortageRes.value.json();
-          setShortages(data.results || []);
+          debugInfo.shortages = { status: shortageRes.value.status, debug: data.debug, resultCount: (data.results || []).length };
+          if (shortageRes.value.ok || (data.results && data.results.length > 0)) {
+            setShortages(data.results || []);
+          } else {
+            errs.push(`Shortages: ${data.error || shortageRes.value.status}`);
+          }
         } else {
+          debugInfo.shortages = { error: shortageRes.reason?.message || 'Network error' };
           errs.push('Shortage data unavailable');
         }
 
-        if (recallRes.status === 'fulfilled' && recallRes.value.ok) {
+        if (recallRes.status === 'fulfilled') {
           const data = await recallRes.value.json();
-          setRecalls(data.results || []);
+          debugInfo.recalls = { status: recallRes.value.status, debug: data.debug, resultCount: (data.results || []).length };
+          if (recallRes.value.ok || (data.results && data.results.length > 0)) {
+            setRecalls(data.results || []);
+          } else {
+            errs.push(`Recalls: ${data.error || recallRes.value.status}`);
+          }
         } else {
+          debugInfo.recalls = { error: recallRes.reason?.message || 'Network error' };
           errs.push('Recall data unavailable');
         }
 
+        setApiDebug(debugInfo);
         setErrors(errs);
         setLastUpdated(new Date().toLocaleTimeString());
       } catch (err) {
@@ -77,9 +101,19 @@ export default function Dashboard() {
       {/* Error Banner */}
       {errors.length > 0 && (
         <div className="mx-4 mt-2 p-3 bg-accent-red/10 border border-accent-red/30 rounded-lg">
-          <p className="font-mono text-xs text-accent-red">
-            {errors.join(' | ')} — Data may be incomplete. Retrying on next refresh.
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="font-mono text-xs text-accent-red">
+              {errors.join(' | ')}
+            </p>
+            <button
+              onClick={() => setDebugOpen((v) => !v)}
+              className="flex items-center gap-1 font-mono text-[10px] text-accent-red/70 hover:text-accent-red transition-colors ml-4 shrink-0"
+            >
+              <Bug size={10} />
+              Debug
+              {debugOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+            </button>
+          </div>
         </div>
       )}
 
@@ -254,6 +288,61 @@ export default function Dashboard() {
           )}
         </PanelCard>
       </div>
+
+      {/* Debug Panel */}
+      {debugOpen && (
+        <div className="mx-4 mb-4 p-4 bg-terminal-panel border border-terminal-border rounded-lg">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-mono text-xs font-bold text-primary flex items-center gap-2">
+              <Bug size={12} className="text-accent-amber" />
+              API Debug Panel
+            </h3>
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch('/api/debug');
+                  const data = await res.json();
+                  setDebugData(data);
+                } catch (err) {
+                  setDebugData({ error: err instanceof Error ? err.message : 'Failed to fetch debug data' });
+                }
+              }}
+              className="font-mono text-[10px] px-2 py-1 rounded bg-accent-blue/10 text-accent-blue hover:bg-accent-blue/20 transition-colors"
+            >
+              Run Health Check
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            {/* API Response Debug */}
+            <div>
+              <p className="font-mono text-[10px] text-muted uppercase tracking-wider mb-1">
+                API Responses (from page load)
+              </p>
+              <pre className="font-mono text-[10px] text-primary bg-terminal-bg p-3 rounded overflow-x-auto max-h-[200px] overflow-y-auto">
+                {JSON.stringify(apiDebug, null, 2)}
+              </pre>
+            </div>
+
+            {/* Health Check Results */}
+            {debugData && (
+              <div>
+                <p className="font-mono text-[10px] text-muted uppercase tracking-wider mb-1">
+                  Health Check Results
+                </p>
+                <pre className="font-mono text-[10px] text-primary bg-terminal-bg p-3 rounded overflow-x-auto max-h-[300px] overflow-y-auto">
+                  {JSON.stringify(debugData, null, 2)}
+                </pre>
+              </div>
+            )}
+
+            <p className="font-mono text-[10px] text-muted">
+              You can also hit <code className="text-accent-green">/api/debug</code> directly in your browser,
+              or check Vercel Function Logs at <code className="text-accent-green">vercel.com → Project → Logs</code>
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

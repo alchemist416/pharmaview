@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
-export const revalidate = 3600;
 
 const FDA_ENFORCEMENT_URL = 'https://api.fda.gov/drug/enforcement.json';
 
 export async function GET(request: NextRequest) {
+  const debug: Record<string, unknown> = {
+    timestamp: new Date().toISOString(),
+    endpoint: FDA_ENFORCEMENT_URL,
+  };
+
   try {
     const { searchParams } = new URL(request.url);
     const limit = searchParams.get('limit') || '100';
@@ -13,9 +17,6 @@ export async function GET(request: NextRequest) {
     const days = searchParams.get('days') || '90';
 
     const queryParts: string[] = [];
-
-    // Always filter for ongoing recalls
-    queryParts.push('status:"Ongoing"');
 
     if (classification) {
       queryParts.push(`classification:"${classification}"`);
@@ -31,32 +32,72 @@ export async function GET(request: NextRequest) {
     const url = new URL(FDA_ENFORCEMENT_URL);
     url.searchParams.set('limit', limit);
     url.searchParams.set('sort', 'report_date:desc');
-    url.searchParams.set('search', queryParts.join('+AND+'));
+    if (queryParts.length > 0) {
+      url.searchParams.set('search', queryParts.join('+AND+'));
+    }
+
+    debug.requestUrl = url.toString();
+    debug.queryParts = queryParts;
+    debug.dateRange = { from: fmt(startDate), to: fmt(endDate), days };
+    const startTime = Date.now();
 
     const res = await fetch(url.toString(), {
-      next: { revalidate: 3600 },
       headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(15000),
     });
 
+    debug.responseTime = `${Date.now() - startTime}ms`;
+    debug.status = res.status;
+    debug.statusText = res.statusText;
+
     if (!res.ok) {
-      const errorText = await res.text().catch(() => 'Unknown error');
-      console.error(`FDA Enforcement API returned ${res.status}: ${errorText}`);
+      const errorText = await res.text().catch(() => 'Could not read response body');
+      debug.errorBody = errorText.slice(0, 500);
+      console.error(`[recalls] FDA API returned ${res.status}:`, errorText.slice(0, 200));
+
+      // FDA returns 404 when no results match the search
+      if (res.status === 404) {
+        return NextResponse.json({
+          meta: null,
+          results: [],
+          debug,
+          _note: 'No recalls found matching the search criteria',
+        });
+      }
+
       return NextResponse.json(
-        { error: `FDA API returned ${res.status}`, results: [], meta: null },
+        { error: `FDA API returned ${res.status}`, results: [], meta: null, debug },
         { status: 502 }
       );
     }
 
     const data = await res.json();
+    debug.resultCount = (data.results || []).length;
+    debug.metaTotal = data.meta?.results?.total;
+
     return NextResponse.json({
       meta: data.meta || null,
       results: data.results || [],
+      debug,
     });
   } catch (err) {
-    console.error('Failed to fetch recalls:', err);
+    const message = err instanceof Error ? err.message : String(err);
+    const isTimeout = message.includes('timeout') || message.includes('abort');
+    const isDns = message.includes('ENOTFOUND') || message.includes('EAI_AGAIN');
+
+    debug.error = message;
+    debug.errorType = isTimeout ? 'TIMEOUT' : isDns ? 'DNS_FAILURE' : 'NETWORK_ERROR';
+
+    console.error(`[recalls] Failed to fetch:`, message);
+
     return NextResponse.json(
-      { error: 'Failed to fetch enforcement data from FDA', results: [], meta: null },
-      { status: 500 }
+      {
+        error: `Failed to fetch recalls: ${debug.errorType}`,
+        results: [],
+        meta: null,
+        debug,
+      },
+      { status: 503 }
     );
   }
 }

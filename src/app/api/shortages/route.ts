@@ -1,38 +1,79 @@
 import { NextResponse } from 'next/server';
 
-export const revalidate = 3600;
+export const dynamic = 'force-dynamic';
 
 const FDA_SHORTAGES_URL = 'https://api.fda.gov/drug/drugshortages.json';
 
 export async function GET() {
+  const debug: Record<string, unknown> = {
+    timestamp: new Date().toISOString(),
+    endpoint: FDA_SHORTAGES_URL,
+  };
+
   try {
     const url = new URL(FDA_SHORTAGES_URL);
     url.searchParams.set('limit', '100');
 
+    debug.requestUrl = url.toString();
+    const startTime = Date.now();
+
     const res = await fetch(url.toString(), {
-      next: { revalidate: 3600 },
       headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(15000),
     });
 
+    debug.responseTime = `${Date.now() - startTime}ms`;
+    debug.status = res.status;
+    debug.statusText = res.statusText;
+
     if (!res.ok) {
-      const errorText = await res.text().catch(() => 'Unknown error');
-      console.error(`FDA Shortages API returned ${res.status}: ${errorText}`);
+      const errorText = await res.text().catch(() => 'Could not read response body');
+      debug.errorBody = errorText.slice(0, 500);
+      console.error(`[shortages] FDA API returned ${res.status}:`, errorText.slice(0, 200));
+
+      // FDA returns 404 when no results match — treat as empty, not error
+      if (res.status === 404) {
+        return NextResponse.json({
+          meta: null,
+          results: [],
+          debug,
+          _note: 'FDA returned 404 — endpoint may be unavailable or no results found',
+        });
+      }
+
       return NextResponse.json(
-        { error: `FDA API returned ${res.status}`, results: [], meta: null },
+        { error: `FDA API returned ${res.status}`, results: [], meta: null, debug },
         { status: 502 }
       );
     }
 
     const data = await res.json();
+    debug.resultCount = (data.results || []).length;
+    debug.metaTotal = data.meta?.results?.total;
+
     return NextResponse.json({
       meta: data.meta || null,
       results: data.results || [],
+      debug,
     });
   } catch (err) {
-    console.error('Failed to fetch shortages:', err);
+    const message = err instanceof Error ? err.message : String(err);
+    const isTimeout = message.includes('timeout') || message.includes('abort');
+    const isDns = message.includes('ENOTFOUND') || message.includes('EAI_AGAIN');
+
+    debug.error = message;
+    debug.errorType = isTimeout ? 'TIMEOUT' : isDns ? 'DNS_FAILURE' : 'NETWORK_ERROR';
+
+    console.error(`[shortages] Failed to fetch:`, message);
+
     return NextResponse.json(
-      { error: 'Failed to fetch drug shortages from FDA', results: [], meta: null },
-      { status: 500 }
+      {
+        error: `Failed to fetch drug shortages: ${debug.errorType}`,
+        results: [],
+        meta: null,
+        debug,
+      },
+      { status: 503 }
     );
   }
 }
