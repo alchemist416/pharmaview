@@ -16,8 +16,13 @@ export default function AnalystPage() {
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [liveContext, setLiveContext] = useState<{
+    shortages: Record<string, unknown>[];
+    recalls: Record<string, unknown>[];
+  }>({ shortages: [], recalls: [] });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const prefillHandled = useRef(false);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -26,6 +31,39 @@ export default function AnalystPage() {
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
+
+  // Fetch live context data for enriching the system prompt
+  useEffect(() => {
+    async function fetchContext() {
+      const [shortageRes, recallRes] = await Promise.allSettled([
+        fetch('/api/shortages'),
+        fetch('/api/recalls?limit=20&days=90'),
+      ]);
+
+      const shortages =
+        shortageRes.status === 'fulfilled' && shortageRes.value.ok
+          ? (await shortageRes.value.json()).results || []
+          : [];
+      const recalls =
+        recallRes.status === 'fulfilled' && recallRes.value.ok
+          ? (await recallRes.value.json()).results || []
+          : [];
+
+      setLiveContext({ shortages, recalls });
+    }
+    fetchContext();
+  }, []);
+
+  // Check for prefill from drug detail page
+  useEffect(() => {
+    if (prefillHandled.current) return;
+    const prefill = sessionStorage.getItem('analyst_prefill');
+    if (prefill) {
+      sessionStorage.removeItem('analyst_prefill');
+      prefillHandled.current = true;
+      setInput(prefill);
+    }
+  }, []);
 
   const sendMessage = useCallback(async (content: string) => {
     if (!content.trim() || isStreaming) return;
@@ -56,6 +94,8 @@ export default function AnalystPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: updatedMessages.map(({ role, content }) => ({ role, content })),
+          currentShortages: liveContext.shortages,
+          recentRecalls: liveContext.recalls,
         }),
       });
 
@@ -117,7 +157,7 @@ export default function AnalystPage() {
       setIsStreaming(false);
       inputRef.current?.focus();
     }
-  }, [messages, isStreaming]);
+  }, [messages, isStreaming, liveContext.shortages, liveContext.recalls]);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();

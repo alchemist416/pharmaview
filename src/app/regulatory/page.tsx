@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import PanelCard from '@/components/layout/PanelCard';
 import TickerTape from '@/components/layout/TickerTape';
 import RecallFeed from '@/components/regulatory/RecallFeed';
+import RecallTrendLine from '@/components/charts/RecallTrendLine';
 import { Recall } from '@/lib/types';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
@@ -159,6 +160,14 @@ export default function RegulatoryPage() {
                 </div>
               ) : (
                 <p className="text-muted font-mono text-xs text-center py-8">No data</p>
+              )}
+            </PanelCard>
+
+            <PanelCard title="Recall Trend">
+              {loading ? (
+                <div className="skeleton h-[120px] w-full" />
+              ) : (
+                <RecallTrendLine recalls={recalls} />
               )}
             </PanelCard>
 

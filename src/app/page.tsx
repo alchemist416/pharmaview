@@ -5,7 +5,8 @@ import PanelCard from '@/components/layout/PanelCard';
 import TickerTape from '@/components/layout/TickerTape';
 import WorldMap from '@/components/map/WorldMap';
 import { CountryMapData, Recall } from '@/lib/types';
-import { AlertTriangle, Shield, Globe } from 'lucide-react';
+import { AlertTriangle, Shield, Globe, Search } from 'lucide-react';
+import Link from 'next/link';
 
 export default function Dashboard() {
   const [countryData, setCountryData] = useState<CountryMapData[]>([]);
@@ -14,6 +15,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
+  const [drugSearch, setDrugSearch] = useState('');
 
   useEffect(() => {
     async function fetchData() {
@@ -123,43 +125,77 @@ export default function Dashboard() {
 
       {/* Main Grid */}
       <div className="grid grid-cols-[1fr_2fr_1fr] gap-4 p-4 pt-0">
-        {/* Left: Shortages Watchlist */}
-        <PanelCard
-          title="Shortage Watchlist"
-          subtitle={lastUpdated ? `Updated ${lastUpdated}` : undefined}
-          className="max-h-[600px] overflow-hidden"
-        >
-          {loading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="skeleton h-10 w-full" />
-              ))}
-            </div>
-          ) : (
-            <div className="max-h-[500px] overflow-y-auto">
-              {shortages.slice(0, 20).map((s, i) => {
-                const name = (s.generic_name || s.brand_name || s.brand_name_search || 'Unknown') as string;
-                const status = ((s.status as string) || '').toLowerCase();
-                const isActive = status.includes('current') || status.includes('active') || status.includes('ongoing');
-                return (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between py-2 border-b border-terminal-border/30 last:border-0"
-                  >
-                    <span className="font-mono text-xs text-primary truncate mr-2">{name}</span>
-                    <span
-                      className={`font-mono text-[10px] font-bold shrink-0 ${
-                        isActive ? 'text-accent-red' : 'text-accent-green'
-                      }`}
+        {/* Left: Drug Search + Shortages Watchlist */}
+        <div className="space-y-4">
+          {/* Drug Search */}
+          <PanelCard title="Drug Search">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (drugSearch.trim()) {
+                  window.location.href = `/drug/${encodeURIComponent(drugSearch.trim())}`;
+                }
+              }}
+              className="flex gap-2"
+            >
+              <div className="relative flex-1">
+                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+                <input
+                  type="text"
+                  placeholder="Search drug name..."
+                  value={drugSearch}
+                  onChange={(e) => setDrugSearch(e.target.value)}
+                  className="w-full bg-terminal-bg border border-terminal-border rounded pl-8 pr-3 py-2 text-xs font-mono text-primary placeholder:text-muted focus:outline-none focus:border-accent-green/50"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={!drugSearch.trim()}
+                className="px-3 py-2 bg-accent-green/10 border border-accent-green/30 rounded text-accent-green text-xs font-mono hover:bg-accent-green/20 transition-colors disabled:opacity-30"
+              >
+                Go
+              </button>
+            </form>
+          </PanelCard>
+
+          <PanelCard
+            title="Shortage Watchlist"
+            subtitle={lastUpdated ? `Updated ${lastUpdated}` : undefined}
+            className="max-h-[500px] overflow-hidden"
+          >
+            {loading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="skeleton h-10 w-full" />
+                ))}
+              </div>
+            ) : (
+              <div className="max-h-[400px] overflow-y-auto">
+                {shortages.slice(0, 20).map((s, i) => {
+                  const name = (s.generic_name || s.brand_name || s.brand_name_search || 'Unknown') as string;
+                  const status = ((s.status as string) || '').toLowerCase();
+                  const isActive = status.includes('current') || status.includes('active') || status.includes('ongoing');
+                  return (
+                    <Link
+                      href={`/drug/${encodeURIComponent(name)}`}
+                      key={i}
+                      className="flex items-center justify-between py-2 border-b border-terminal-border/30 last:border-0 hover:bg-white/[0.02] transition-colors"
                     >
-                      {isActive ? 'ACTIVE' : 'RESOLVED'}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </PanelCard>
+                      <span className="font-mono text-xs text-primary truncate mr-2">{name}</span>
+                      <span
+                        className={`font-mono text-[10px] font-bold shrink-0 ${
+                          isActive ? 'text-accent-red' : 'text-accent-green'
+                        }`}
+                      >
+                        {isActive ? 'ACTIVE' : 'RESOLVED'}
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </PanelCard>
+        </div>
 
         {/* Center: World Map */}
         <PanelCard

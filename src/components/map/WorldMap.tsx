@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, memo } from 'react';
+import { useState, memo, useMemo } from 'react';
 import {
   ComposableMap,
   Geographies,
@@ -19,13 +19,30 @@ interface WorldMapProps {
   showType?: 'manufacturer' | 'api' | 'all';
 }
 
-function WorldMap({ countryData }: WorldMapProps) {
+function WorldMap({ countryData, showType = 'all' }: WorldMapProps) {
   const [tooltip, setTooltip] = useState<{ name: string; count: number; x: number; y: number } | null>(null);
   const [selectedCountry, setSelectedCountry] = useState<CountryMapData | null>(null);
 
+  // Filter establishments by type, then rebuild country data
+  const filteredData = useMemo(() => {
+    if (showType === 'all') return countryData;
+    return countryData
+      .map((c) => {
+        const filtered = c.establishments.filter((e) =>
+          showType === 'manufacturer' ? e.type === 'manufacturer' : e.type === 'api'
+        );
+        return {
+          ...c,
+          establishments: filtered,
+          manufacturer_count: filtered.length,
+        };
+      })
+      .filter((c) => c.manufacturer_count > 0);
+  }, [countryData, showType]);
+
   // Build a map from ISO Alpha-3 to country data
   const countryLookup = new Map<string, CountryMapData>();
-  for (const c of countryData) {
+  for (const c of filteredData) {
     const alpha3 = getAlpha3(c.country_code);
     countryLookup.set(alpha3, c);
   }

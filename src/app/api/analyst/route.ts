@@ -18,7 +18,7 @@ When answering:
 - Highlight actionable insights for procurement and risk teams
 - Format responses with clear structure using markdown
 
-You do NOT have access to live data feeds. Base your analysis on your training knowledge of the pharmaceutical industry. If asked about real-time data, clarify that you're providing general analysis and recommend checking the PharmaView dashboard for current figures.`;
+You may be provided with live FDA data context below. When available, reference this data directly in your analysis.`;
 
 export async function POST(request: Request) {
   try {
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { messages } = await request.json();
+    const { messages, currentShortages, recentRecalls } = await request.json();
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return new Response(
@@ -39,12 +39,35 @@ export async function POST(request: Request) {
       );
     }
 
+    // Build context-enriched system prompt with live data
+    let systemPrompt = SYSTEM_PROMPT;
+
+    if (Array.isArray(currentShortages) && currentShortages.length > 0) {
+      const shortageList = currentShortages
+        .slice(0, 20)
+        .map((s: { generic_name?: string; brand_name?: string; status?: string }) =>
+          `- ${s.generic_name || s.brand_name || 'Unknown'} (${s.status || 'Unknown'})`
+        )
+        .join('\n');
+      systemPrompt += `\n\n## Current Drug Shortages (live FDA data)\n${shortageList}`;
+    }
+
+    if (Array.isArray(recentRecalls) && recentRecalls.length > 0) {
+      const recallList = recentRecalls
+        .slice(0, 15)
+        .map((r: { recalling_firm?: string; classification?: string; reason_for_recall?: string }) =>
+          `- ${r.recalling_firm || 'Unknown'} | ${r.classification || 'N/A'} | ${(r.reason_for_recall || '').slice(0, 80)}`
+        )
+        .join('\n');
+      systemPrompt += `\n\n## Recent FDA Recalls (live data)\n${recallList}`;
+    }
+
     const anthropic = new Anthropic({ apiKey });
 
     const stream = anthropic.messages.stream({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
-      system: SYSTEM_PROMPT,
+      system: systemPrompt,
       messages: messages.map((m: { role: string; content: string }) => ({
         role: m.role as 'user' | 'assistant',
         content: m.content,
