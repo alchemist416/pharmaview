@@ -22,26 +22,24 @@ export async function GET(request: NextRequest) {
       queryParts.push(`classification:"${classification}"`);
     }
 
-    // Date range filter
+    // Date range filter — use proper openFDA Lucene syntax
     const endDate = new Date();
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - parseInt(days));
     const fmt = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, '');
     queryParts.push(`report_date:[${fmt(startDate)}+TO+${fmt(endDate)}]`);
 
-    const url = new URL(FDA_ENFORCEMENT_URL);
-    url.searchParams.set('limit', limit);
-    url.searchParams.set('sort', 'report_date:desc');
-    if (queryParts.length > 0) {
-      url.searchParams.set('search', queryParts.join('+AND+'));
-    }
+    // Build URL manually to avoid double-encoding of + signs in Lucene query syntax.
+    // searchParams.set() encodes + as %2B which breaks openFDA's query parser.
+    const searchQuery = queryParts.join('+AND+');
+    const fetchUrl = `${FDA_ENFORCEMENT_URL}?limit=${limit}&sort=report_date:desc&search=${searchQuery}`;
 
-    debug.requestUrl = url.toString();
+    debug.requestUrl = fetchUrl;
     debug.queryParts = queryParts;
     debug.dateRange = { from: fmt(startDate), to: fmt(endDate), days };
     const startTime = Date.now();
 
-    const res = await fetch(url.toString(), {
+    const res = await fetch(fetchUrl, {
       headers: { Accept: 'application/json' },
       signal: AbortSignal.timeout(15000),
     });

@@ -63,7 +63,7 @@ export async function GET() {
   const endpoints = [
     {
       name: 'Drug Shortages',
-      url: 'https://api.fda.gov/drug/drugshortages.json?limit=1',
+      url: 'https://api.fda.gov/drug/shortages.json?limit=1',
     },
     {
       name: 'Enforcement/Recalls',

@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-const FDA_SHORTAGES_URL = 'https://api.fda.gov/drug/drugshortages.json';
+// Correct endpoint: shortages.json, NOT drugshortages.json
+// See: https://open.fda.gov/apis/drug/drugshortages/
+const FDA_SHORTAGES_URL = 'https://api.fda.gov/drug/shortages.json';
 
 export async function GET() {
   const debug: Record<string, unknown> = {
@@ -31,13 +33,13 @@ export async function GET() {
       debug.errorBody = errorText.slice(0, 500);
       console.error(`[shortages] FDA API returned ${res.status}:`, errorText.slice(0, 200));
 
-      // FDA returns 404 when no results match — treat as empty, not error
+      // FDA returns 404 when no results match
       if (res.status === 404) {
         return NextResponse.json({
           meta: null,
           results: [],
           debug,
-          _note: 'FDA returned 404 — endpoint may be unavailable or no results found',
+          _note: 'FDA returned 404 — no results found',
         });
       }
 
