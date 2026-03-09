@@ -1,44 +1,75 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { promises as fs } from 'fs';
-import path from 'path';
+
+export const revalidate = 3600;
+
+const FDA_NDC_URL = 'https://api.fda.gov/drug/ndc.json';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const drug = searchParams.get('drug');
+    const limit = searchParams.get('limit') || '100';
 
-    // Load DECRS data
-    const decrsPath = path.join(process.cwd(), 'public', 'data', 'decrs.json');
-    const decrsRaw = await fs.readFile(decrsPath, 'utf-8');
-    const decrs = JSON.parse(decrsRaw);
+    const url = new URL(FDA_NDC_URL);
+    url.searchParams.set('limit', limit);
 
     if (drug) {
-      // Also try openFDA NDC endpoint for drug-specific data
-      try {
-        const fdaRes = await fetch(
-          `https://api.fda.gov/drug/ndc.json?search=brand_name:"${encodeURIComponent(drug)}"+generic_name:"${encodeURIComponent(drug)}"&limit=100`,
-          { next: { revalidate: 3600 } }
-        );
+      // Search by both brand name and generic name
+      const encoded = encodeURIComponent(drug);
+      url.searchParams.set(
+        'search',
+        `brand_name:"${encoded}"+generic_name:"${encoded}"`
+      );
+    }
 
-        if (fdaRes.ok) {
-          const fdaData = await fdaRes.json();
-          return NextResponse.json({
-            fda_results: fdaData.results || [],
-            decrs_establishments: decrs.establishments,
-          });
+    const res = await fetch(url.toString(), {
+      next: { revalidate: 3600 },
+      headers: { Accept: 'application/json' },
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text().catch(() => 'Unknown error');
+      console.error(`FDA NDC API returned ${res.status}: ${errorText}`);
+      return NextResponse.json(
+        { error: `FDA API returned ${res.status}`, results: [], meta: null },
+        { status: 502 }
+      );
+    }
+
+    const data = await res.json();
+    const results = data.results || [];
+
+    // Extract unique manufacturers from NDC results
+    const manufacturerMap = new Map<string, {
+      firm_name: string;
+      products: string[];
+    }>();
+
+    for (const item of results) {
+      const labeler = item.labeler_name || 'Unknown';
+      const existing = manufacturerMap.get(labeler);
+      const productName = item.brand_name || item.generic_name || 'Unknown';
+      if (existing) {
+        if (!existing.products.includes(productName)) {
+          existing.products.push(productName);
         }
-      } catch {
-        // Fall through to return DECRS data only
+      } else {
+        manufacturerMap.set(labeler, {
+          firm_name: labeler,
+          products: [productName],
+        });
       }
     }
 
     return NextResponse.json({
-      fda_results: [],
-      decrs_establishments: decrs.establishments,
+      meta: data.meta || null,
+      results,
+      manufacturers: Array.from(manufacturerMap.values()),
     });
-  } catch {
+  } catch (err) {
+    console.error('Failed to fetch manufacturers:', err);
     return NextResponse.json(
-      { error: 'Failed to fetch manufacturers', fda_results: [], decrs_establishments: [] },
+      { error: 'Failed to fetch NDC data from FDA', results: [], manufacturers: [], meta: null },
       { status: 500 }
     );
   }

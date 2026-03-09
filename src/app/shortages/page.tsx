@@ -8,6 +8,7 @@ import { AlertTriangle, TrendingUp, CheckCircle } from 'lucide-react';
 export default function ShortagesPage() {
   const [shortages, setShortages] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     async function fetchData() {
@@ -16,9 +17,12 @@ export default function ShortagesPage() {
         if (res.ok) {
           const data = await res.json();
           setShortages(data.results || []);
+        } else {
+          setError('FDA Shortages API returned an error. Data may be stale.');
         }
       } catch (err) {
         console.error('Failed to fetch shortages:', err);
+        setError('Failed to connect to FDA API.');
       } finally {
         setLoading(false);
       }
@@ -40,6 +44,13 @@ export default function ShortagesPage() {
       <h1 className="font-mono text-lg font-bold text-primary uppercase tracking-wider">
         Drug Shortages Monitor
       </h1>
+
+      {/* Error Banner */}
+      {error && (
+        <div className="p-3 bg-accent-red/10 border border-accent-red/30 rounded-lg">
+          <p className="font-mono text-xs text-accent-red">{error}</p>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-3 gap-4">

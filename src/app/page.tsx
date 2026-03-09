@@ -13,9 +13,11 @@ export default function Dashboard() {
   const [recalls, setRecalls] = useState<Recall[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState('');
+  const [errors, setErrors] = useState<string[]>([]);
 
   useEffect(() => {
     async function fetchData() {
+      const errs: string[] = [];
       try {
         const [mapRes, shortageRes, recallRes] = await Promise.allSettled([
           fetch('/api/map-data'),
@@ -26,21 +28,29 @@ export default function Dashboard() {
         if (mapRes.status === 'fulfilled' && mapRes.value.ok) {
           const data = await mapRes.value.json();
           setCountryData(data.countries || []);
+        } else {
+          errs.push('Map data unavailable');
         }
 
         if (shortageRes.status === 'fulfilled' && shortageRes.value.ok) {
           const data = await shortageRes.value.json();
           setShortages(data.results || []);
+        } else {
+          errs.push('Shortage data unavailable');
         }
 
         if (recallRes.status === 'fulfilled' && recallRes.value.ok) {
           const data = await recallRes.value.json();
           setRecalls(data.results || []);
+        } else {
+          errs.push('Recall data unavailable');
         }
 
+        setErrors(errs);
         setLastUpdated(new Date().toLocaleTimeString());
       } catch (err) {
         console.error('Failed to fetch dashboard data:', err);
+        setErrors(['Failed to connect to FDA API']);
       } finally {
         setLoading(false);
       }
@@ -62,6 +72,15 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen">
+      {/* Error Banner */}
+      {errors.length > 0 && (
+        <div className="mx-4 mt-2 p-3 bg-accent-red/10 border border-accent-red/30 rounded-lg">
+          <p className="font-mono text-xs text-accent-red">
+            {errors.join(' | ')} — Data may be incomplete. Retrying on next refresh.
+          </p>
+        </div>
+      )}
+
       {/* Ticker */}
       <TickerTape recalls={recalls} />
 

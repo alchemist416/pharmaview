@@ -17,18 +17,23 @@ export default function RegulatoryPage() {
   const [recalls, setRecalls] = useState<Recall[]>([]);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(90);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
+      setError('');
       try {
         const res = await fetch(`/api/recalls?limit=100&days=${days}`);
         if (res.ok) {
           const data = await res.json();
           setRecalls(data.results || []);
+        } else {
+          setError('FDA Enforcement API returned an error.');
         }
       } catch (err) {
         console.error('Failed to fetch recalls:', err);
+        setError('Failed to connect to FDA API.');
       } finally {
         setLoading(false);
       }
@@ -61,6 +66,11 @@ export default function RegulatoryPage() {
       <TickerTape recalls={recalls} />
 
       <div className="p-4 space-y-4">
+        {error && (
+          <div className="p-3 bg-accent-red/10 border border-accent-red/30 rounded-lg">
+            <p className="font-mono text-xs text-accent-red">{error}</p>
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <h1 className="font-mono text-lg font-bold text-primary uppercase tracking-wider">
             Regulatory Pulse
