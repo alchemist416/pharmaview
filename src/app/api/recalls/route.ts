@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
 export const revalidate = 3600;
 
 const FDA_ENFORCEMENT_URL = 'https://api.fda.gov/drug/enforcement.json';
