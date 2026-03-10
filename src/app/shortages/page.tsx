@@ -53,7 +53,7 @@ export default function ShortagesPage() {
       )}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-terminal-panel border border-terminal-border rounded-lg p-4 flex items-center gap-4">
           <div className="p-3 rounded-lg bg-accent-red/10">
             <AlertTriangle className="text-accent-red" size={20} />

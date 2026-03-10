@@ -121,7 +121,7 @@ export default function Dashboard() {
       <TickerTape recalls={recalls} />
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-3 gap-4 p-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4">
         <div className="bg-terminal-panel border border-terminal-border rounded-lg p-4 flex items-center gap-4">
           <div className="p-3 rounded-lg bg-accent-red/10">
             <AlertTriangle className="text-accent-red" size={20} />
@@ -158,7 +158,7 @@ export default function Dashboard() {
       </div>
 
       {/* Main Grid */}
-      <div className="grid grid-cols-[1fr_2fr_1fr] gap-4 p-4 pt-0">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr_1fr] gap-4 p-4 pt-0">
         {/* Left: Drug Search + Shortages Watchlist */}
         <div className="space-y-4">
           {/* Drug Search */}

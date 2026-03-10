@@ -186,7 +186,7 @@ export default function DrugDetailPage() {
       ) : (
         <>
           {/* Main two-column layout */}
-          <div className="grid grid-cols-[1fr_1fr] gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-4">
             {/* Left: Drug Info + Shortage Details */}
             <div className="space-y-4">
               <PanelCard title="Shortage Details" subtitle={`${shortages.length} record(s) found`}>

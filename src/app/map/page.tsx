@@ -35,7 +35,7 @@ export default function MapPage() {
 
   return (
     <div className="p-4 space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div>
           <h1 className="font-mono text-lg font-bold text-primary uppercase tracking-wider">
             Supply Chain Map
@@ -82,7 +82,7 @@ export default function MapPage() {
       </PanelCard>
 
       {/* Country ranking */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {countryData.slice(0, 4).map((country) => (
           <PanelCard key={country.country_code} title={country.country}>
             <div className="flex items-center justify-between">

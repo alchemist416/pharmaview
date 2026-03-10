@@ -22,6 +22,7 @@ export async function GET() {
     const res = await fetch(url.toString(), {
       headers: { Accept: 'application/json' },
       signal: AbortSignal.timeout(15000),
+      next: { revalidate: 3600 },
     });
 
     debug.responseTime = `${Date.now() - startTime}ms`;
@@ -57,6 +58,8 @@ export async function GET() {
       meta: data.meta || null,
       results: data.results || [],
       debug,
+    }, {
+      headers: { 'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=7200' },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
