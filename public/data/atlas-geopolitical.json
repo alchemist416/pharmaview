@@ -1,0 +1,29 @@
+{
+  "description": "Geopolitical events impacting pharmaceutical supply chains, 1995-2025",
+  "events": [
+    { "date": "1997-07", "label": "Asian Financial Crisis", "type": "economic", "detail": "Currency collapse across SE Asia disrupts API exports" },
+    { "date": "1998-05", "label": "India Nuclear Tests / Sanctions", "type": "sanctions", "detail": "US sanctions on India briefly threaten pharma trade" },
+    { "date": "2001-09", "label": "9/11 Attacks", "type": "conflict", "detail": "US port shutdowns delay API and finished-drug imports" },
+    { "date": "2003-03", "label": "Iraq War Begins", "type": "conflict", "detail": "Oil price surge raises freight and feedstock costs" },
+    { "date": "2003-11", "label": "SARS Outbreak", "type": "pandemic", "detail": "Chinese API factories shuttered during containment" },
+    { "date": "2005-08", "label": "Hurricane Katrina", "type": "natural_disaster", "detail": "Gulf Coast pharma manufacturing knocked offline" },
+    { "date": "2008-09", "label": "Lehman Brothers Collapse", "type": "economic", "detail": "Credit freeze stalls pharma procurement pipelines" },
+    { "date": "2008-03", "label": "Heparin Contamination Crisis", "type": "quality", "detail": "Contaminated Chinese heparin kills 81 in US" },
+    { "date": "2011-03", "label": "Fukushima Earthquake/Tsunami", "type": "natural_disaster", "detail": "Japan pharma plants destroyed; global API shortage" },
+    { "date": "2013-01", "label": "Ranbaxy FDA Ban", "type": "quality", "detail": "India's largest generics maker banned from US market" },
+    { "date": "2014-03", "label": "Russia Annexes Crimea", "type": "sanctions", "detail": "EU/US sanctions disrupt Eastern European API flows" },
+    { "date": "2015-08", "label": "Tianjin Port Explosion", "type": "natural_disaster", "detail": "Major chemical/pharma logistics hub destroyed" },
+    { "date": "2016-06", "label": "Brexit Vote", "type": "economic", "detail": "UK-EU regulatory divergence uncertainty begins" },
+    { "date": "2017-09", "label": "Hurricane Maria", "type": "natural_disaster", "detail": "Puerto Rico pharma plants (Baxter, Amgen) devastated" },
+    { "date": "2018-07", "label": "US-China Trade War Begins", "type": "sanctions", "detail": "Tariffs on Chinese API intermediates; 25% duties" },
+    { "date": "2018-07", "label": "Valsartan NDMA Contamination", "type": "quality", "detail": "Carcinogen found in Chinese-made API; global recall" },
+    { "date": "2020-01", "label": "COVID-19 Pandemic", "type": "pandemic", "detail": "Wuhan lockdown halts global API production" },
+    { "date": "2020-03", "label": "India API Export Ban", "type": "sanctions", "detail": "India restricts export of 26 APIs and formulations" },
+    { "date": "2021-03", "label": "Suez Canal Blockage", "type": "natural_disaster", "detail": "Ever Given blocks API shipments for 6 days" },
+    { "date": "2022-02", "label": "Russia-Ukraine War", "type": "conflict", "detail": "Neon gas shortage threatens pharma packaging supply" },
+    { "date": "2022-04", "label": "Shanghai Lockdown", "type": "pandemic", "detail": "Two-month lockdown disrupts Chinese API/excipient exports" },
+    { "date": "2023-02", "label": "Turkey Earthquake", "type": "natural_disaster", "detail": "Pharma warehouses destroyed; regional shortage" },
+    { "date": "2024-01", "label": "Red Sea / Houthi Attacks", "type": "conflict", "detail": "Shipping rerouted around Africa; transit +10 days" },
+    { "date": "2024-10", "label": "US-China Biotech Restrictions", "type": "sanctions", "detail": "BIOSECURE Act limits Chinese CDMO partnerships" }
+  ]
+}

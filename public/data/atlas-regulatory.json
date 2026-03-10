@@ -1,0 +1,25 @@
+{
+  "description": "Key US pharmaceutical regulatory and policy milestones, 1995-2025",
+  "milestones": [
+    { "date": "1997-11", "label": "FDA Modernization Act", "detail": "Streamlines drug approval; creates fast-track designation" },
+    { "date": "1999-08", "label": "DSCSA Precursor (PDMA Amendments)", "detail": "Tightens wholesale drug distribution requirements" },
+    { "date": "2003-12", "label": "Medicare Modernization Act", "detail": "Creates Part D; shifts reimbursement dynamics" },
+    { "date": "2007-09", "label": "FDAAA (FDA Amendments Act)", "detail": "Grants FDA post-market safety authority; REMS created" },
+    { "date": "2009-03", "label": "Affordable Care Act Draft", "detail": "ACA biosimilar pathway (BPCIA) introduced in Congress" },
+    { "date": "2010-03", "label": "ACA Signed into Law", "detail": "Biosimilar approval pathway; 340B expansion" },
+    { "date": "2012-07", "label": "FDASIA (Safety & Innovation Act)", "detail": "Drug shortage notification mandate; breakthrough therapy" },
+    { "date": "2013-11", "label": "Drug Supply Chain Security Act", "detail": "DSCSA mandates track-and-trace serialization" },
+    { "date": "2015-03", "label": "First US Biosimilar Approved", "detail": "Zarxio (filgrastim-sndz) by Sandoz; biosimilar era begins" },
+    { "date": "2017-08", "label": "FDA Drug Competition Action Plan", "detail": "Gottlieb pushes generic approvals to combat prices" },
+    { "date": "2018-10", "label": "SUPPORT Act (Opioid Crisis)", "detail": "Accelerates controlled substance shortage protocols" },
+    { "date": "2019-12", "label": "CREATES Act", "detail": "Blocks REMS abuse that delays generic competition" },
+    { "date": "2020-08", "label": "Executive Order on Drug Imports", "detail": "Trump EO allows state-level Canadian drug importation" },
+    { "date": "2020-05", "label": "EO on Essential Medicines Manufacturing", "detail": "Orders domestic API production for essential drugs" },
+    { "date": "2021-02", "label": "Biden Supply Chain EO 14017", "detail": "100-day review of pharma supply chain vulnerabilities" },
+    { "date": "2022-08", "label": "Inflation Reduction Act", "detail": "Medicare drug price negotiation; Part D cap" },
+    { "date": "2023-06", "label": "BIOSECURE Act Introduced", "detail": "Targets Chinese biotech firms; reshoring push" },
+    { "date": "2023-11", "label": "DSCSA Enforcement Begins", "detail": "Full serialization compliance required Nov 2023" },
+    { "date": "2024-09", "label": "First Medicare Negotiated Prices", "detail": "CMS announces prices for first 10 drugs" },
+    { "date": "2025-01", "label": "BIOSECURE Act Takes Effect", "detail": "Federal contracts barred from designated Chinese CDMOs" }
+  ]
+}
