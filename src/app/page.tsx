@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import PanelCard from '@/components/layout/PanelCard';
 import TickerTape from '@/components/layout/TickerTape';
 import WorldMap from '@/components/map/WorldMap';
-import { CountryMapData, Recall } from '@/lib/types';
+import { CountryMapData, Recall, TradeFlow } from '@/lib/types';
 import { AlertTriangle, Shield, Globe, Search, Bug, ChevronDown, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
 
@@ -12,6 +12,7 @@ export default function Dashboard() {
   const [countryData, setCountryData] = useState<CountryMapData[]>([]);
   const [shortages, setShortages] = useState<Record<string, unknown>[]>([]);
   const [recalls, setRecalls] = useState<Recall[]>([]);
+  const [tradeFlows, setTradeFlows] = useState<TradeFlow[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
@@ -26,10 +27,11 @@ export default function Dashboard() {
       const debugInfo: Record<string, unknown> = {};
 
       try {
-        const [mapRes, shortageRes, recallRes] = await Promise.allSettled([
+        const [mapRes, shortageRes, recallRes, tradeRes] = await Promise.allSettled([
           fetch('/api/map-data'),
           fetch('/api/shortages'),
           fetch('/api/recalls?limit=20&days=90'),
+          fetch('/api/trade-flows?mode=flows'),
         ]);
 
         if (mapRes.status === 'fulfilled') {
@@ -69,6 +71,11 @@ export default function Dashboard() {
         } else {
           debugInfo.recalls = { error: recallRes.reason?.message || 'Network error' };
           errs.push('Recall data unavailable');
+        }
+
+        if (tradeRes.status === 'fulfilled' && tradeRes.value.ok) {
+          const data = await tradeRes.value.json();
+          setTradeFlows(data.results || []);
         }
 
         setApiDebug(debugInfo);
@@ -240,7 +247,7 @@ export default function Dashboard() {
           {loading ? (
             <div className="skeleton w-full h-[400px]" />
           ) : (
-            <WorldMap countryData={countryData} />
+            <WorldMap countryData={countryData} tradeFlows={tradeFlows} />
           )}
         </PanelCard>
 

@@ -63,3 +63,52 @@ export interface ManufacturerForDrug {
   city: string;
   concentration_pct: number;
 }
+
+export interface Drug340BPricing {
+  ndc: string;
+  drug_name: string;
+  generic_name: string;
+  strength: string;
+  form: string;
+  unit_price_340b: number;
+  unit_price_wholesale: number;
+  unit_price_retail: number;
+  savings_pct: number;
+  effective_date: string;
+  manufacturer: string;
+}
+
+export interface PatentExpiry {
+  drug_name: string;
+  generic_name: string;
+  patent_number: string;
+  expiry_date: string;
+  status: 'active' | 'expired';
+  patent_holder: string;
+  exclusivity_end: string;
+  orange_book_listed: boolean;
+  therapeutic_equivalents: number;
+  related_patents?: string[];
+}
+
+export interface TradeFlow {
+  reporter: string;
+  reporter_name: string;
+  partner: string;
+  partner_name: string;
+  hs_code: string;
+  commodity: string;
+  year: number;
+  import_value_usd: number;
+  export_value_usd: number;
+  net_flow: number;
+}
+
+export interface CountryTradeData {
+  country_code: string;
+  country_name: string;
+  total_imports: number;
+  total_exports: number;
+  net_flow: number;
+  top_partners: { partner: string; partner_name: string; import_value: number; export_value: number }[];
+}

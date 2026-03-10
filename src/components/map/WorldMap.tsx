@@ -7,7 +7,7 @@ import {
   Geography,
   ZoomableGroup,
 } from 'react-simple-maps';
-import { CountryMapData } from '@/lib/types';
+import { CountryMapData, TradeFlow } from '@/lib/types';
 import { getCountryColor } from '@/lib/utils';
 import { getAlpha3 } from '@/lib/mapData';
 import ManufacturerPanel from './ManufacturerPanel';
@@ -65,9 +65,10 @@ const numericToAlpha2: Record<string, string> = {
 interface WorldMapProps {
   countryData: CountryMapData[];
   showType?: 'manufacturer' | 'api' | 'all';
+  tradeFlows?: TradeFlow[];
 }
 
-function WorldMap({ countryData, showType = 'all' }: WorldMapProps) {
+function WorldMap({ countryData, showType = 'all', tradeFlows = [] }: WorldMapProps) {
   const [tooltip, setTooltip] = useState<{ name: string; count: number; x: number; y: number } | null>(null);
   const [selectedCountry, setSelectedCountry] = useState<CountryMapData | null>(null);
 
@@ -202,6 +203,7 @@ function WorldMap({ countryData, showType = 'all' }: WorldMapProps) {
         <ManufacturerPanel
           country={selectedCountry}
           onClose={() => setSelectedCountry(null)}
+          tradeFlows={tradeFlows}
         />
       )}
     </div>

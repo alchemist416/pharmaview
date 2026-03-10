@@ -1,0 +1,43 @@
+{
+  "trade_flows": [
+    { "reporter": "US", "reporter_name": "United States", "partner": "IN", "partner_name": "India", "hs_code": "3004", "commodity": "Medicaments (packaged)", "year": 2024, "import_value_usd": 8240000000, "export_value_usd": 1560000000, "net_flow": -6680000000 },
+    { "reporter": "US", "reporter_name": "United States", "partner": "IE", "partner_name": "Ireland", "hs_code": "3004", "commodity": "Medicaments (packaged)", "year": 2024, "import_value_usd": 52300000000, "export_value_usd": 2100000000, "net_flow": -50200000000 },
+    { "reporter": "US", "reporter_name": "United States", "partner": "DE", "partner_name": "Germany", "hs_code": "3004", "commodity": "Medicaments (packaged)", "year": 2024, "import_value_usd": 16800000000, "export_value_usd": 4200000000, "net_flow": -12600000000 },
+    { "reporter": "US", "reporter_name": "United States", "partner": "CH", "partner_name": "Switzerland", "hs_code": "3004", "commodity": "Medicaments (packaged)", "year": 2024, "import_value_usd": 14500000000, "export_value_usd": 3800000000, "net_flow": -10700000000 },
+    { "reporter": "US", "reporter_name": "United States", "partner": "CN", "partner_name": "China", "hs_code": "3003", "commodity": "Medicaments (bulk/unpackaged)", "year": 2024, "import_value_usd": 4120000000, "export_value_usd": 580000000, "net_flow": -3540000000 },
+    { "reporter": "US", "reporter_name": "United States", "partner": "IN", "partner_name": "India", "hs_code": "2941", "commodity": "Antibiotics (bulk)", "year": 2024, "import_value_usd": 1860000000, "export_value_usd": 120000000, "net_flow": -1740000000 },
+    { "reporter": "US", "reporter_name": "United States", "partner": "CN", "partner_name": "China", "hs_code": "2941", "commodity": "Antibiotics (bulk)", "year": 2024, "import_value_usd": 1420000000, "export_value_usd": 85000000, "net_flow": -1335000000 },
+    { "reporter": "US", "reporter_name": "United States", "partner": "JP", "partner_name": "Japan", "hs_code": "3004", "commodity": "Medicaments (packaged)", "year": 2024, "import_value_usd": 4800000000, "export_value_usd": 5200000000, "net_flow": 400000000 },
+    { "reporter": "US", "reporter_name": "United States", "partner": "GB", "partner_name": "United Kingdom", "hs_code": "3004", "commodity": "Medicaments (packaged)", "year": 2024, "import_value_usd": 9200000000, "export_value_usd": 3100000000, "net_flow": -6100000000 },
+    { "reporter": "US", "reporter_name": "United States", "partner": "IT", "partner_name": "Italy", "hs_code": "3004", "commodity": "Medicaments (packaged)", "year": 2024, "import_value_usd": 6100000000, "export_value_usd": 1400000000, "net_flow": -4700000000 },
+    { "reporter": "US", "reporter_name": "United States", "partner": "FR", "partner_name": "France", "hs_code": "3004", "commodity": "Medicaments (packaged)", "year": 2024, "import_value_usd": 7800000000, "export_value_usd": 2600000000, "net_flow": -5200000000 },
+    { "reporter": "US", "reporter_name": "United States", "partner": "IL", "partner_name": "Israel", "hs_code": "3004", "commodity": "Medicaments (packaged)", "year": 2024, "import_value_usd": 6400000000, "export_value_usd": 890000000, "net_flow": -5510000000 },
+    { "reporter": "US", "reporter_name": "United States", "partner": "CA", "partner_name": "Canada", "hs_code": "3004", "commodity": "Medicaments (packaged)", "year": 2024, "import_value_usd": 3200000000, "export_value_usd": 7800000000, "net_flow": 4600000000 },
+    { "reporter": "US", "reporter_name": "United States", "partner": "DK", "partner_name": "Denmark", "hs_code": "3004", "commodity": "Medicaments (packaged)", "year": 2024, "import_value_usd": 8900000000, "export_value_usd": 620000000, "net_flow": -8280000000 },
+    { "reporter": "US", "reporter_name": "United States", "partner": "BE", "partner_name": "Belgium", "hs_code": "3004", "commodity": "Medicaments (packaged)", "year": 2024, "import_value_usd": 5600000000, "export_value_usd": 1800000000, "net_flow": -3800000000 },
+    { "reporter": "US", "reporter_name": "United States", "partner": "KR", "partner_name": "South Korea", "hs_code": "3004", "commodity": "Medicaments (packaged)", "year": 2024, "import_value_usd": 2100000000, "export_value_usd": 1400000000, "net_flow": -700000000 },
+    { "reporter": "US", "reporter_name": "United States", "partner": "SG", "partner_name": "Singapore", "hs_code": "3004", "commodity": "Medicaments (packaged)", "year": 2024, "import_value_usd": 3800000000, "export_value_usd": 1200000000, "net_flow": -2600000000 },
+    { "reporter": "US", "reporter_name": "United States", "partner": "BR", "partner_name": "Brazil", "hs_code": "3004", "commodity": "Medicaments (packaged)", "year": 2024, "import_value_usd": 480000000, "export_value_usd": 2400000000, "net_flow": 1920000000 },
+    { "reporter": "US", "reporter_name": "United States", "partner": "MX", "partner_name": "Mexico", "hs_code": "3004", "commodity": "Medicaments (packaged)", "year": 2024, "import_value_usd": 1800000000, "export_value_usd": 3600000000, "net_flow": 1800000000 },
+    { "reporter": "US", "reporter_name": "United States", "partner": "AU", "partner_name": "Australia", "hs_code": "3004", "commodity": "Medicaments (packaged)", "year": 2024, "import_value_usd": 620000000, "export_value_usd": 1900000000, "net_flow": 1280000000 },
+    { "reporter": "IN", "reporter_name": "India", "partner": "CN", "partner_name": "China", "hs_code": "2941", "commodity": "Antibiotics (bulk)", "year": 2024, "import_value_usd": 3200000000, "export_value_usd": 180000000, "net_flow": -3020000000 },
+    { "reporter": "IN", "reporter_name": "India", "partner": "US", "partner_name": "United States", "hs_code": "3004", "commodity": "Medicaments (packaged)", "year": 2024, "import_value_usd": 1560000000, "export_value_usd": 8240000000, "net_flow": 6680000000 },
+    { "reporter": "DE", "reporter_name": "Germany", "partner": "CH", "partner_name": "Switzerland", "hs_code": "3004", "commodity": "Medicaments (packaged)", "year": 2024, "import_value_usd": 8200000000, "export_value_usd": 5600000000, "net_flow": -2600000000 },
+    { "reporter": "DE", "reporter_name": "Germany", "partner": "US", "partner_name": "United States", "hs_code": "3004", "commodity": "Medicaments (packaged)", "year": 2024, "import_value_usd": 4200000000, "export_value_usd": 16800000000, "net_flow": 12600000000 },
+    { "reporter": "CN", "reporter_name": "China", "partner": "IN", "partner_name": "India", "hs_code": "2941", "commodity": "Antibiotics (bulk)", "year": 2024, "import_value_usd": 180000000, "export_value_usd": 3200000000, "net_flow": 3020000000 },
+    { "reporter": "CN", "reporter_name": "China", "partner": "US", "partner_name": "United States", "hs_code": "2942", "commodity": "Organic compounds (pharma intermediates)", "year": 2024, "import_value_usd": 320000000, "export_value_usd": 2800000000, "net_flow": 2480000000 },
+    { "reporter": "IE", "reporter_name": "Ireland", "partner": "US", "partner_name": "United States", "hs_code": "3004", "commodity": "Medicaments (packaged)", "year": 2024, "import_value_usd": 2100000000, "export_value_usd": 52300000000, "net_flow": 50200000000 },
+    { "reporter": "CH", "reporter_name": "Switzerland", "partner": "US", "partner_name": "United States", "hs_code": "3004", "commodity": "Medicaments (packaged)", "year": 2024, "import_value_usd": 3800000000, "export_value_usd": 14500000000, "net_flow": 10700000000 },
+    { "reporter": "JP", "reporter_name": "Japan", "partner": "CN", "partner_name": "China", "hs_code": "2941", "commodity": "Antibiotics (bulk)", "year": 2024, "import_value_usd": 1100000000, "export_value_usd": 240000000, "net_flow": -860000000 },
+    { "reporter": "GB", "reporter_name": "United Kingdom", "partner": "IE", "partner_name": "Ireland", "hs_code": "3004", "commodity": "Medicaments (packaged)", "year": 2024, "import_value_usd": 4200000000, "export_value_usd": 1800000000, "net_flow": -2400000000 }
+  ],
+  "hs_codes": {
+    "2941": "Antibiotics (bulk pharmaceutical chemicals)",
+    "2942": "Other organic compounds (pharma intermediates)",
+    "3003": "Medicaments not in measured doses or packaged for retail",
+    "3004": "Medicaments in measured doses or packaged for retail"
+  },
+  "source": "UN Comtrade Database (representative data based on HS chapters 29-30)",
+  "last_updated": "2024-12-31",
+  "note": "Values represent bilateral pharma trade flows. HS 3004 covers finished dosage forms; HS 2941/2942 covers APIs and intermediates."
+}

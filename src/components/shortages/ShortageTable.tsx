@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { Search, ArrowUpDown, MapPin, Bell } from 'lucide-react';
 import RiskBadge from './RiskBadge';
 import ShortageSparkline from '../charts/ShortageSparkline';
 import { formatDate } from '@/lib/utils';
+import type { CompositeRiskScore } from '@/lib/riskScoring';
 
 interface ShortageRecord {
   generic_name?: string;
@@ -36,6 +37,12 @@ function getRisk(status: string): 'HIGH' | 'MEDIUM' | 'LOW' {
   return 'MEDIUM';
 }
 
+function compositeToRisk(label: CompositeRiskScore['label']): 'HIGH' | 'MEDIUM' | 'LOW' {
+  if (label === 'CRITICAL' || label === 'HIGH') return 'HIGH';
+  if (label === 'MEDIUM') return 'MEDIUM';
+  return 'LOW';
+}
+
 function statusColor(status: string): string {
   if (status === 'Active') return 'text-accent-red';
   if (status === 'Resolved') return 'text-accent-green';
@@ -47,6 +54,43 @@ export default function ShortageTable({ shortages }: ShortageTableProps) {
   const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Resolved'>('all');
   const [sortField, setSortField] = useState<'name' | 'date' | 'status'>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [riskScores, setRiskScores] = useState<Record<string, CompositeRiskScore>>({});
+
+  // Fetch composite risk scores for unique drug names
+  const drugNames = useMemo(() => {
+    const names = new Set<string>();
+    shortages.forEach((s) => {
+      const name = s.generic_name || s.brand_name || s.brand_name_search || '';
+      if (name) names.add(name);
+    });
+    return Array.from(names);
+  }, [shortages]);
+
+  const fetchRiskScores = useCallback(async () => {
+    const scores: Record<string, CompositeRiskScore> = {};
+    // Fetch in batches of 5 to avoid overwhelming the API
+    for (let i = 0; i < drugNames.length; i += 5) {
+      const batch = drugNames.slice(i, i + 5);
+      const results = await Promise.allSettled(
+        batch.map(async (name) => {
+          const res = await fetch(`/api/risk-score?drug=${encodeURIComponent(name)}`);
+          if (!res.ok) return null;
+          const data = await res.json();
+          return { name, score: data.composite_risk as CompositeRiskScore };
+        })
+      );
+      results.forEach((r) => {
+        if (r.status === 'fulfilled' && r.value?.score) {
+          scores[r.value.name] = r.value.score;
+        }
+      });
+    }
+    setRiskScores(scores);
+  }, [drugNames]);
+
+  useEffect(() => {
+    if (drugNames.length > 0) fetchRiskScores();
+  }, [drugNames, fetchRiskScores]);
 
   const filtered = useMemo(() => {
     let result = shortages.map((s) => ({
@@ -149,7 +193,7 @@ export default function ShortageTable({ shortages }: ShortageTableProps) {
                 </span>
               </th>
               <th className="text-left py-2 px-3 font-mono text-[10px] text-muted uppercase tracking-wider">
-                Risk
+                Risk Score
               </th>
               <th className="text-left py-2 px-3 font-mono text-[10px] text-muted uppercase tracking-wider">
                 Trend
@@ -187,7 +231,16 @@ export default function ShortageTable({ shortages }: ShortageTableProps) {
                     {s._date ? formatDate(s._date) : '—'}
                   </td>
                   <td className="py-2.5 px-3">
-                    <RiskBadge risk={getRisk(s._status)} />
+                    {riskScores[s._name] ? (
+                      <div className="flex items-center gap-1.5">
+                        <RiskBadge risk={compositeToRisk(riskScores[s._name].label)} />
+                        <span className="font-mono text-[10px] text-muted">
+                          {riskScores[s._name].overall}
+                        </span>
+                      </div>
+                    ) : (
+                      <RiskBadge risk={getRisk(s._status)} />
+                    )}
                   </td>
                   <td className="py-2.5 px-3">
                     <ShortageSparkline isActive={s._status === 'Active'} />

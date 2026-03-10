@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react';
 import PanelCard from '@/components/layout/PanelCard';
 import WorldMap from '@/components/map/WorldMap';
-import { CountryMapData } from '@/lib/types';
+import { CountryMapData, TradeFlow } from '@/lib/types';
 
 export default function MapPage() {
   const [countryData, setCountryData] = useState<CountryMapData[]>([]);
+  const [tradeFlows, setTradeFlows] = useState<TradeFlow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showType, setShowType] = useState<'all' | 'manufacturer' | 'api'>('all');
   const [error, setError] = useState('');
@@ -15,13 +16,22 @@ export default function MapPage() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const res = await fetch('/api/map-data');
-        if (res.ok) {
-          const data = await res.json();
+        const [mapRes, tradeRes] = await Promise.allSettled([
+          fetch('/api/map-data'),
+          fetch('/api/trade-flows?mode=flows'),
+        ]);
+
+        if (mapRes.status === 'fulfilled' && mapRes.value.ok) {
+          const data = await mapRes.value.json();
           setCountryData(data.countries || []);
           setTotalEstablishments(data.total_establishments || 0);
         } else {
           setError('FDA NDC API returned an error. Map data unavailable.');
+        }
+
+        if (tradeRes.status === 'fulfilled' && tradeRes.value.ok) {
+          const data = await tradeRes.value.json();
+          setTradeFlows(data.results || []);
         }
       } catch (err) {
         console.error('Failed to fetch map data:', err);
@@ -77,7 +87,7 @@ export default function MapPage() {
         {loading ? (
           <div className="skeleton w-full h-[600px]" />
         ) : (
-          <WorldMap countryData={countryData} showType={showType} />
+          <WorldMap countryData={countryData} showType={showType} tradeFlows={tradeFlows} />
         )}
       </PanelCard>
 
