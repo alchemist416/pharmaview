@@ -4,7 +4,6 @@ import { useEffect, useState, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import PanelCard from '@/components/layout/PanelCard';
-import WorldMap from '@/components/map/WorldMap';
 import RiskBadge from '@/components/shortages/RiskBadge';
 import ConcentrationBar from '@/components/charts/ConcentrationBar';
 import { Recall } from '@/lib/types';
@@ -16,7 +15,7 @@ import {
   Bot,
   ArrowLeft,
   Pill,
-  Globe,
+  MapPin,
   Shield,
 } from 'lucide-react';
 
@@ -281,19 +280,50 @@ export default function DrugDetailPage() {
 
             {/* Right: Map + Manufacturers + Risk */}
             <div className="space-y-4">
-              {/* Mini Map */}
-              <PanelCard title="Manufacturing Geography" subtitle="Countries producing this drug">
+              {/* Manufacturing Countries */}
+              <PanelCard
+                title="Manufacturing Geography"
+                headerRight={
+                  <span className="font-mono text-[10px] text-muted">
+                    {countryMapData.length} {countryMapData.length === 1 ? 'country' : 'countries'}
+                  </span>
+                }
+              >
                 {countryMapData.length > 0 ? (
-                  <div className="h-[250px]">
-                    <WorldMap countryData={countryMapData} />
+                  <div className="space-y-2">
+                    {countryMapData.map((c) => {
+                      const total = countryMapData.reduce((sum, x) => sum + x.manufacturer_count, 0);
+                      const pct = total > 0 ? Math.round((c.manufacturer_count / total) * 100) : 0;
+                      return (
+                        <div
+                          key={c.country_code}
+                          className="flex items-center gap-3 p-2 rounded bg-terminal-bg"
+                        >
+                          <MapPin size={12} className="text-accent-blue shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <span className="font-mono text-xs text-primary font-medium">
+                                {c.country}
+                              </span>
+                              <span className="font-mono text-[10px] text-muted">
+                                {c.manufacturer_count} mfg ({pct}%)
+                              </span>
+                            </div>
+                            <div className="mt-1 h-1.5 bg-terminal-border rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-accent-blue rounded-full"
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
-                  <div className="flex items-center justify-center h-[250px]">
-                    <div className="text-center">
-                      <Globe size={24} className="text-muted mx-auto mb-2" />
-                      <p className="font-mono text-xs text-muted">No geographic data available</p>
-                    </div>
-                  </div>
+                  <p className="font-mono text-xs text-muted py-4 text-center">
+                    No geographic data available
+                  </p>
                 )}
               </PanelCard>
 

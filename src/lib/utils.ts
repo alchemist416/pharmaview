@@ -7,7 +7,17 @@ export function cn(...inputs: ClassValue[]) {
 
 export function formatDate(dateStr: string): string {
   try {
-    const date = new Date(dateStr);
+    let date: Date;
+    // FDA uses YYYYMMDD format (e.g., "20240315")
+    if (/^\d{8}$/.test(dateStr)) {
+      const y = dateStr.slice(0, 4);
+      const m = dateStr.slice(4, 6);
+      const d = dateStr.slice(6, 8);
+      date = new Date(`${y}-${m}-${d}`);
+    } else {
+      date = new Date(dateStr);
+    }
+    if (isNaN(date.getTime())) return dateStr;
     return date.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
