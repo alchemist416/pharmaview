@@ -33,7 +33,7 @@ async function fdaFetch<T>(endpoint: string, params: Record<string, string> = {}
 }
 
 export async function fetchShortages(limit = 100, skip = 0) {
-  return fdaFetch('/drug/drugshortages.json', {
+  return fdaFetch('/drug/shortages.json', {
     limit: String(limit),
     skip: String(skip),
   });
@@ -68,14 +68,14 @@ export async function fetchRecalls(params: {
 
 export async function fetchNDCByDrug(drugName: string) {
   return fdaFetch('/drug/ndc.json', {
-    search: `brand_name:"${drugName}"+generic_name:"${drugName}"`,
+    search: `(brand_name:"${drugName}")+OR+(generic_name:"${drugName}")`,
     limit: '100',
   });
 }
 
 export async function fetchDrugLabel(drugName: string) {
   return fdaFetch('/drug/label.json', {
-    search: `openfda.brand_name:"${drugName}"+openfda.generic_name:"${drugName}"`,
+    search: `(openfda.brand_name:"${drugName}")+OR+(openfda.generic_name:"${drugName}")`,
     limit: '5',
   });
 }

@@ -23,6 +23,9 @@ import {
 interface ManufacturerResult {
   firm_name: string;
   products: string[];
+  country: string;
+  country_code: string;
+  city: string;
 }
 
 interface ShortageResult {
@@ -40,7 +43,6 @@ export default function DrugDetailPage() {
   const drugName = decodeURIComponent((params.name as string) || '');
 
   const [manufacturers, setManufacturers] = useState<ManufacturerResult[]>([]);
-  const [ndcResults, setNdcResults] = useState<Record<string, unknown>[]>([]);
   const [shortages, setShortages] = useState<ShortageResult[]>([]);
   const [recalls, setRecalls] = useState<Recall[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,7 +65,6 @@ export default function DrugDetailPage() {
       if (mfgRes.status === 'fulfilled' && mfgRes.value.ok) {
         const data = await mfgRes.value.json();
         setManufacturers(data.manufacturers || []);
-        setNdcResults(data.results || []);
       } else {
         errs.push('Manufacturer data unavailable');
       }
@@ -105,23 +106,18 @@ export default function DrugDetailPage() {
     fetchDrugData();
   }, [drugName]);
 
-  // Build country data from NDC results for mini map
+  // Build country data from manufacturer results (which include DECRS cross-referenced countries)
   const countryMapData = useMemo(() => {
-    const establishments = ndcResults.map((item: Record<string, unknown>) => {
-      const openfda = (item.openfda as Record<string, unknown[]>) || {};
-      const country =
-        ((openfda.manufacturer_country as string[]) || [])[0] || 'United States';
-      return {
-        firm_name: (item.labeler_name as string) || 'Unknown',
-        country_code: 'US', // Will be resolved by aggregateByCountry
-        country,
-        city: '',
-        registration_number: '',
-        type: 'manufacturer' as const,
-      };
-    });
+    const establishments = manufacturers.map((m) => ({
+      firm_name: m.firm_name,
+      country_code: m.country_code || 'US',
+      country: m.country || 'United States',
+      city: m.city || '',
+      registration_number: '',
+      type: 'manufacturer' as const,
+    }));
     return aggregateByCountry(establishments);
-  }, [ndcResults]);
+  }, [manufacturers]);
 
   const concentrationScore = useMemo(
     () => calculateConcentrationRisk(countryMapData),
