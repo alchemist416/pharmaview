@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Activity, Map, AlertTriangle, Shield, Bot, Menu, X, Layers } from 'lucide-react';
+import { Activity, Map, AlertTriangle, Shield, Bot, Menu, X, Layers, Crosshair } from 'lucide-react';
 import { formatTime } from '@/lib/utils';
 
 const navLinks = [
@@ -11,6 +11,7 @@ const navLinks = [
   { href: '/map', label: 'Supply Map', icon: Map },
   { href: '/shortages', label: 'Shortages', icon: AlertTriangle },
   { href: '/regulatory', label: 'Regulatory', icon: Shield },
+  { href: '/predictions', label: 'Predictions', icon: Crosshair },
   { href: '/atlas', label: 'Atlas', icon: Layers },
   { href: '/analyst', label: 'AI Analyst', icon: Bot },
 ];
