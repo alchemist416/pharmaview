@@ -1,90 +1,101 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { TrendingUp, TrendingDown, Minus, RefreshCw, DollarSign, AlertTriangle } from 'lucide-react';
-import DisruptionHeatMap from '@/components/predictions/DisruptionHeatMap';
-import ShortageLeaderboard from '@/components/predictions/ShortageLeaderboard';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { RefreshCw, AlertTriangle, Bell } from 'lucide-react';
+import ForecastCard from '@/components/predictions/ForecastCard';
+import SignalDashboard from '@/components/predictions/SignalDashboard';
+import ForecastHistory from '@/components/predictions/ForecastHistory';
+import { ForecastSnapshot } from '@/lib/signals';
 
-interface Prediction {
-  drug: string;
-  category: string;
-  disruption_score: number;
-  primary_risk_driver: string;
-  trend: 'improving' | 'worsening' | 'stable';
-  historical_analogue: string;
-  days_since_last_shortage: number;
-  active_class_shortages: number;
-  prediction: {
-    probability: number;
-    risk_tier: string;
-    predicted_next_window: string | null;
-    factors: string[];
-  };
-  currency_pressure: {
-    usd_inr_trend: string;
-    usd_cny_trend: string;
-    fx_risk_contribution: number;
-  };
-  concentration_score: number;
-  warning_letter_frequency: number;
-}
-
-interface CategorySummary {
-  category: string;
-  drug_count: number;
-  avg_disruption_score: number;
-  max_disruption_score: number;
-  risk_label: string;
-  primary_driver: string;
-}
-
-interface PredictionData {
-  predictions: Prediction[];
-  categories: CategorySummary[];
-  top_10: Prediction[];
-  generated_at: string;
-  fx_data: {
-    usd_inr: number;
-    usd_cny: number;
-    usd_inr_6mo_change: number;
-    usd_cny_6mo_change: number;
-  };
-}
-
-function TrendIcon({ trend }: { trend: string }) {
-  if (trend === 'weakening') return <TrendingUp size={12} className="text-red-400" />;
-  if (trend === 'strengthening') return <TrendingDown size={12} className="text-emerald-400" />;
-  return <Minus size={12} className="text-slate-400" />;
-}
+const REFRESH_INTERVAL_MS = 60 * 60 * 1000; // 60 minutes
 
 export default function PredictionsPage() {
-  const [data, setData] = useState<PredictionData | null>(null);
+  const [data, setData] = useState<ForecastSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [view, setView] = useState<'heatmap' | 'leaderboard'>('leaderboard');
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastFetched, setLastFetched] = useState<Date | null>(null);
+  const [minutesAgo, setMinutesAgo] = useState(0);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
+  const fetchData = useCallback(async (showRefreshing = false) => {
+    if (showRefreshing) setRefreshing(true);
+    else setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/predictions');
+      const res = await fetch('/api/predictions/generate');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
+      const json: ForecastSnapshot = await res.json();
       setData(json);
+      setLastFetched(new Date());
+
+      // Check for new CRITICAL signals and send browser notification
+      if (showRefreshing && json.critical_alert) {
+        sendNotification(json.critical_alert);
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load predictions');
+      setError(e instanceof Error ? e.message : 'Failed to load forecasts');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  // Initial load
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Auto-refresh every 60 minutes
+  useEffect(() => {
+    refreshTimerRef.current = setInterval(() => {
+      fetchData(true);
+    }, REFRESH_INTERVAL_MS);
+    return () => {
+      if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
+    };
+  }, [fetchData]);
+
+  // Update "minutes ago" counter
+  useEffect(() => {
+    timerRef.current = setInterval(() => {
+      if (lastFetched) {
+        setMinutesAgo(Math.floor((Date.now() - lastFetched.getTime()) / 60000));
+      }
+    }, 30000);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [lastFetched]);
+
+  function sendNotification(alert: string) {
+    if (typeof window === 'undefined') return;
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'granted') {
+      new Notification('PharmaView CRITICAL Alert', { body: alert, icon: '/favicon.ico' });
+    } else if (Notification.permission !== 'denied') {
+      Notification.requestPermission();
+    }
+  }
+
+  function requestNotificationPermission() {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      Notification.requestPermission();
+    }
+  }
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="text-accent-green font-mono animate-pulse">COMPUTING DISRUPTION PREDICTIONS...</div>
+        <div className="text-center">
+          <div className="text-accent-green font-mono animate-pulse text-sm mb-2">
+            INITIALIZING FORECAST ENGINE...
+          </div>
+          <div className="text-[9px] font-mono text-muted">
+            Collecting signals from ReliefWeb, FRED, openFDA
+          </div>
+        </div>
       </div>
     );
   }
@@ -92,186 +103,95 @@ export default function PredictionsPage() {
   if (error || !data) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="text-red-400 font-mono">ERROR: {error || 'No data'}</div>
+        <div className="text-red-400 font-mono text-sm">ERROR: {error || 'No data'}</div>
       </div>
     );
   }
 
-  const critical = data.predictions.filter((p) => p.disruption_score >= 70).length;
-  const high = data.predictions.filter((p) => p.disruption_score >= 45 && p.disruption_score < 70).length;
-  const worsening = data.predictions.filter((p) => p.trend === 'worsening').length;
+  // Sort forecasts: severity first, then probability descending
+  const severityOrder: Record<string, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+  const sortedForecasts = [...data.forecasts].sort((a, b) => {
+    const sevDiff = (severityOrder[a.severity] ?? 4) - (severityOrder[b.severity] ?? 4);
+    if (sevDiff !== 0) return sevDiff;
+    return b.probability - a.probability;
+  });
 
   return (
     <div className="p-4 md:p-6 space-y-5">
+      {/* CRITICAL alert banner */}
+      {data.critical_alert && (
+        <div className="relative overflow-hidden border border-red-500/40 rounded-lg bg-red-500/10 px-4 py-3">
+          <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-500 animate-pulse" />
+          <div className="flex items-center gap-3 pl-2">
+            <AlertTriangle size={18} className="text-red-400 flex-shrink-0 animate-pulse" />
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-mono font-bold text-red-400">
+                CRITICAL: {data.critical_alert}
+              </div>
+              <div className="text-[9px] font-mono text-red-400/70 mt-0.5">
+                Active disruption detected. Forecasts updated{' '}
+                {minutesAgo === 0 ? 'just now' : `${minutesAgo} minute${minutesAgo !== 1 ? 's' : ''} ago`}
+              </div>
+            </div>
+            <button
+              onClick={requestNotificationPermission}
+              className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono text-red-400 border border-red-500/30 rounded hover:bg-red-500/10 transition-colors flex-shrink-0"
+              title="Enable browser notifications for critical alerts"
+            >
+              <Bell size={10} />
+              NOTIFY
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-lg font-mono font-bold text-primary tracking-wider">DISRUPTION PREDICTION ENGINE</h1>
+          <h1 className="text-lg font-mono font-bold text-primary tracking-wider">
+            AI DISRUPTION FORECASTS
+          </h1>
           <p className="text-xs text-muted font-mono mt-1">
-            Multi-factor shortage risk scoring across {data.predictions.length} drugs · {data.categories.length} categories
+            Claude-powered supply chain disruption forecasts from {data.signals.signals.length} live signals
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={fetchData}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-terminal-border rounded text-xs font-mono text-muted hover:text-primary hover:bg-white/10 transition-colors"
+            onClick={() => fetchData(true)}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-terminal-border rounded text-xs font-mono text-muted hover:text-primary hover:bg-white/10 transition-colors disabled:opacity-50"
           >
-            <RefreshCw size={12} />
-            REFRESH
+            <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+            {refreshing ? 'REFRESHING...' : 'REFRESH NOW'}
           </button>
           <span className="text-[9px] font-mono text-muted">
-            Updated {new Date(data.generated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            Updated{' '}
+            {minutesAgo === 0 ? 'just now' : `${minutesAgo}m ago`}
+            {' · '}Auto-refresh 60m
           </span>
         </div>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <div className="border border-terminal-border rounded-lg bg-terminal-panel p-3">
-          <div className="text-[9px] font-mono text-muted mb-1">CRITICAL RISK</div>
-          <div className="text-2xl font-mono font-bold text-red-400">{critical}</div>
-          <div className="text-[9px] font-mono text-muted">drugs score ≥70</div>
+      {/* Main grid: forecasts + signal sidebar */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-5">
+        {/* Forecast cards */}
+        <div className="space-y-4">
+          <div className="text-[9px] font-mono text-muted">
+            {sortedForecasts.length} ACTIVE FORECASTS · Sorted by severity then probability
+          </div>
+          {sortedForecasts.map((forecast) => (
+            <ForecastCard key={forecast.id} forecast={forecast} />
+          ))}
         </div>
-        <div className="border border-terminal-border rounded-lg bg-terminal-panel p-3">
-          <div className="text-[9px] font-mono text-muted mb-1">HIGH RISK</div>
-          <div className="text-2xl font-mono font-bold text-amber-400">{high}</div>
-          <div className="text-[9px] font-mono text-muted">drugs score 45-69</div>
-        </div>
-        <div className="border border-terminal-border rounded-lg bg-terminal-panel p-3">
-          <div className="text-[9px] font-mono text-muted mb-1">WORSENING TREND</div>
-          <div className="text-2xl font-mono font-bold text-red-400 flex items-center gap-1">
-            {worsening}
-            <AlertTriangle size={16} className="text-red-400/60" />
-          </div>
-          <div className="text-[9px] font-mono text-muted">deteriorating outlook</div>
-        </div>
-        <div className="border border-terminal-border rounded-lg bg-terminal-panel p-3">
-          <div className="text-[9px] font-mono text-muted mb-1 flex items-center gap-1">
-            <DollarSign size={10} />USD/INR
-          </div>
-          <div className="text-lg font-mono font-bold text-primary flex items-center gap-1">
-            {data.fx_data.usd_inr.toFixed(1)}
-            <TrendIcon trend={data.fx_data.usd_inr_6mo_change > 1 ? 'weakening' : data.fx_data.usd_inr_6mo_change < -1 ? 'strengthening' : 'stable'} />
-          </div>
-          <div className={`text-[9px] font-mono ${data.fx_data.usd_inr_6mo_change > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-            {data.fx_data.usd_inr_6mo_change > 0 ? '+' : ''}{data.fx_data.usd_inr_6mo_change.toFixed(1)}% 6mo
-          </div>
-        </div>
-        <div className="border border-terminal-border rounded-lg bg-terminal-panel p-3">
-          <div className="text-[9px] font-mono text-muted mb-1 flex items-center gap-1">
-            <DollarSign size={10} />USD/CNY
-          </div>
-          <div className="text-lg font-mono font-bold text-primary flex items-center gap-1">
-            {data.fx_data.usd_cny.toFixed(2)}
-            <TrendIcon trend={data.fx_data.usd_cny_6mo_change > 1 ? 'weakening' : data.fx_data.usd_cny_6mo_change < -1 ? 'strengthening' : 'stable'} />
-          </div>
-          <div className={`text-[9px] font-mono ${data.fx_data.usd_cny_6mo_change > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-            {data.fx_data.usd_cny_6mo_change > 0 ? '+' : ''}{data.fx_data.usd_cny_6mo_change.toFixed(1)}% 6mo
-          </div>
+
+        {/* Signal dashboard sidebar */}
+        <div className="space-y-4">
+          <SignalDashboard snapshot={data.signals} />
         </div>
       </div>
 
-      {/* View toggle */}
-      <div className="flex items-center gap-1 border border-terminal-border rounded-lg bg-terminal-panel p-0.5 w-fit">
-        <button
-          onClick={() => setView('leaderboard')}
-          className={`px-3 py-1.5 text-xs font-mono rounded transition-colors ${
-            view === 'leaderboard' ? 'bg-accent-green/10 text-accent-green' : 'text-muted hover:text-primary'
-          }`}
-        >
-          TOP 10 LEADERBOARD
-        </button>
-        <button
-          onClick={() => setView('heatmap')}
-          className={`px-3 py-1.5 text-xs font-mono rounded transition-colors ${
-            view === 'heatmap' ? 'bg-accent-green/10 text-accent-green' : 'text-muted hover:text-primary'
-          }`}
-        >
-          CATEGORY HEAT MAP
-        </button>
-      </div>
-
-      {/* Main content */}
-      <div className="border border-terminal-border rounded-lg bg-terminal-panel overflow-hidden">
-        {view === 'leaderboard' ? (
-          <div>
-            <div className="px-4 py-3 border-b border-terminal-border">
-              <h2 className="text-sm font-mono font-semibold text-primary">TOP 10 DRUGS MOST LIKELY TO ENTER SHORTAGE</h2>
-              <p className="text-[9px] font-mono text-muted mt-0.5">Ranked by composite disruption probability score · Updated monthly</p>
-            </div>
-            <ShortageLeaderboard top10={data.top_10} />
-          </div>
-        ) : (
-          <div>
-            <div className="px-4 py-3 border-b border-terminal-border">
-              <h2 className="text-sm font-mono font-semibold text-primary">DRUG CATEGORY DISRUPTION HEAT MAP</h2>
-              <p className="text-[9px] font-mono text-muted mt-0.5">
-                {data.categories.length} categories · Click category to filter · Click drug for deep-dive
-              </p>
-            </div>
-            <div className="p-3">
-              <DisruptionHeatMap
-                predictions={data.predictions}
-                categories={data.categories}
-                onSelectCategory={(cat) => setSelectedCategory(selectedCategory === cat ? null : cat)}
-                selectedCategory={selectedCategory}
-              />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Selected category detail */}
-      {selectedCategory && view === 'heatmap' && (
-        <div className="border border-terminal-border rounded-lg bg-terminal-panel p-4">
-          <h3 className="text-sm font-mono font-semibold text-accent-green mb-3">{selectedCategory.toUpperCase()} — CATEGORY DETAIL</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {data.predictions
-              .filter((p) => p.category === selectedCategory)
-              .sort((a, b) => b.disruption_score - a.disruption_score)
-              .map((drug) => (
-                <a
-                  key={drug.drug}
-                  href={`/predictions/${encodeURIComponent(drug.drug)}`}
-                  className="border border-terminal-border/50 rounded p-3 hover:bg-white/[0.03] transition-colors block"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-mono text-xs font-semibold text-primary capitalize">{drug.drug}</span>
-                    <span className={`font-mono text-sm font-bold ${
-                      drug.disruption_score >= 70 ? 'text-red-400' : drug.disruption_score >= 45 ? 'text-amber-400' : 'text-emerald-400'
-                    }`}>
-                      {drug.disruption_score}
-                    </span>
-                  </div>
-                  <div className="space-y-1 text-[9px] font-mono text-muted">
-                    <div className="flex justify-between">
-                      <span>Primary driver</span>
-                      <span className="text-primary truncate ml-2">{drug.primary_risk_driver}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Trend</span>
-                      <span className={drug.trend === 'worsening' ? 'text-red-400' : drug.trend === 'improving' ? 'text-emerald-400' : 'text-slate-400'}>
-                        {drug.trend}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Historical analogue</span>
-                      <span className="text-primary truncate ml-2">{drug.historical_analogue}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Warning letters (12mo)</span>
-                      <span className="text-primary">{drug.warning_letter_frequency}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Days since last shortage</span>
-                      <span className="text-primary">{drug.days_since_last_shortage > 9000 ? '—' : drug.days_since_last_shortage}</span>
-                    </div>
-                  </div>
-                </a>
-              ))}
-          </div>
-        </div>
-      )}
+      {/* Forecast history */}
+      <ForecastHistory forecasts={data.forecasts} generatedAt={data.generated_at} />
     </div>
   );
 }
