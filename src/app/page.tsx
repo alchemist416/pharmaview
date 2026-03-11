@@ -7,6 +7,8 @@ import WorldMap from '@/components/map/WorldMap';
 import { CountryMapData, Recall, TradeFlow } from '@/lib/types';
 import { AlertTriangle, Shield, Globe, Search, Bug, ChevronDown, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
+import { useSimulation } from '@/lib/simulation/context';
+import SimulationResults from '@/components/simulation/SimulationResults';
 
 interface LiveStatus { isLive: boolean; lastUpdated: string; source: string }
 
@@ -100,6 +102,9 @@ export default function Dashboard() {
 
     fetchData();
   }, []);
+
+  const { isActive: simActive, result: simResult } = useSimulation();
+  const simHighlightCountries = new Set(simResult?.affectedRegions.map((r) => r.countryCode) ?? []);
 
   const activeShortages = shortages.filter(
     (s) => {
@@ -262,7 +267,7 @@ export default function Dashboard() {
           {loading ? (
             <div className="skeleton w-full h-[400px]" />
           ) : (
-            <WorldMap countryData={countryData} tradeFlows={tradeFlows} />
+            <WorldMap countryData={countryData} tradeFlows={tradeFlows} highlightCountries={simActive ? simHighlightCountries : undefined} />
           )}
         </PanelCard>
 
@@ -313,6 +318,9 @@ export default function Dashboard() {
           )}
         </PanelCard>
       </div>
+
+      {/* Simulation Results */}
+      {simActive && <SimulationResults />}
 
       {/* Debug Panel */}
       {debugOpen && (

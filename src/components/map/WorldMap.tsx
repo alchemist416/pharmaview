@@ -66,9 +66,10 @@ interface WorldMapProps {
   countryData: CountryMapData[];
   showType?: 'manufacturer' | 'api' | 'all';
   tradeFlows?: TradeFlow[];
+  highlightCountries?: Set<string>; // country codes to highlight (simulation mode)
 }
 
-function WorldMap({ countryData, showType = 'all', tradeFlows = [] }: WorldMapProps) {
+function WorldMap({ countryData, showType = 'all', tradeFlows = [], highlightCountries }: WorldMapProps) {
   const [tooltip, setTooltip] = useState<{ name: string; count: number; x: number; y: number } | null>(null);
   const [selectedCountry, setSelectedCountry] = useState<CountryMapData | null>(null);
 
@@ -120,21 +121,24 @@ function WorldMap({ countryData, showType = 'all', tradeFlows = [] }: WorldMapPr
                 const alpha3 = alpha2 ? getAlpha3(alpha2) : '';
                 const data = alpha3 ? countryLookup.get(alpha3) : undefined;
                 const count = data?.manufacturer_count || 0;
-                const fillColor = count > 0 ? getCountryColor(count) : '#0f1629';
+                const isHighlighted = highlightCountries?.has(alpha2);
+                const fillColor = isHighlighted
+                  ? '#f59e0b' // amber for simulation-affected countries
+                  : count > 0 ? getCountryColor(count) : '#0f1629';
 
                 return (
                   <Geography
                     key={geo.rsmKey}
                     geography={geo}
                     fill={fillColor}
-                    stroke="#1e2d4a"
-                    strokeWidth={0.5}
+                    stroke={isHighlighted ? '#f59e0b' : '#1e2d4a'}
+                    strokeWidth={isHighlighted ? 1.5 : 0.5}
                     style={{
                       default: { outline: 'none' },
                       hover: {
-                        fill: count > 0 ? '#3b82f6' : '#1e2d4a',
+                        fill: isHighlighted ? '#d97706' : count > 0 ? '#3b82f6' : '#1e2d4a',
                         outline: 'none',
-                        cursor: count > 0 ? 'pointer' : 'default',
+                        cursor: count > 0 || isHighlighted ? 'pointer' : 'default',
                       },
                       pressed: { outline: 'none' },
                     }}
@@ -195,6 +199,15 @@ function WorldMap({ countryData, showType = 'all', tradeFlows = [] }: WorldMapPr
               <span className="font-mono text-[10px] text-muted">{label}</span>
             </div>
           ))}
+          {highlightCountries && highlightCountries.size > 0 && (
+            <>
+              <div className="border-t border-terminal-border my-1" />
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#f59e0b' }} />
+                <span className="font-mono text-[10px] text-accent-amber">Sim. Affected</span>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

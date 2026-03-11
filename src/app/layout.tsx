@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import TopNav from "@/components/layout/TopNav";
+import SimulationShell from "@/components/simulation/SimulationShell";
 
 export const metadata: Metadata = {
   title: "PharmaView — Pharma Supply Chain Intelligence",
@@ -15,8 +16,10 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="bg-terminal-bg text-primary antialiased min-h-screen">
-        <TopNav />
-        <main>{children}</main>
+        <SimulationShell>
+          <TopNav />
+          <main className="pb-14">{children}</main>
+        </SimulationShell>
       </body>
     </html>
   );

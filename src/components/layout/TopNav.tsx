@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Activity, Map, AlertTriangle, Shield, Bot, Menu, X, Layers, Crosshair } from 'lucide-react';
+import { Activity, Map, AlertTriangle, Shield, Bot, Menu, X, Layers, Crosshair, FlaskConical } from 'lucide-react';
 import { formatTime } from '@/lib/utils';
+import { useSimulation } from '@/lib/simulation/context';
 
 const navLinks = [
   { href: '/', label: 'Dashboard', icon: Activity },
@@ -20,6 +21,7 @@ export default function TopNav() {
   const pathname = usePathname();
   const [time, setTime] = useState('');
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { isActive, openWizard, exitSimulation } = useSimulation();
 
   useEffect(() => {
     const update = () => setTime(formatTime(new Date()));
@@ -62,6 +64,18 @@ export default function TopNav() {
           </div>
         </div>
         <div className="flex items-center gap-4">
+          {/* Simulation toggle */}
+          <button
+            onClick={isActive ? exitSimulation : openWizard}
+            className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-mono font-medium transition-all ${
+              isActive
+                ? 'bg-accent-amber/20 border border-accent-amber/40 text-accent-amber animate-pulse'
+                : 'bg-terminal-bg border border-terminal-border text-muted hover:text-accent-amber hover:border-accent-amber/40'
+            }`}
+          >
+            <FlaskConical size={13} />
+            {isActive ? 'SIM ACTIVE' : 'Simulate'}
+          </button>
           <div className="flex items-center gap-2 text-xs">
             <span className="relative flex h-2 w-2">
               <span className="animate-pulse-dot absolute inline-flex h-full w-full rounded-full bg-accent-green opacity-75" />
@@ -100,6 +114,17 @@ export default function TopNav() {
               </Link>
             );
           })}
+          <button
+            onClick={isActive ? exitSimulation : openWizard}
+            className={`flex items-center gap-2 px-3 py-2.5 rounded text-sm font-medium transition-colors w-full ${
+              isActive
+                ? 'bg-accent-amber/10 text-accent-amber'
+                : 'text-muted hover:text-accent-amber hover:bg-white/5'
+            }`}
+          >
+            <FlaskConical size={16} />
+            {isActive ? 'Exit Simulation' : 'Run Simulation'}
+          </button>
         </div>
       )}
     </nav>
