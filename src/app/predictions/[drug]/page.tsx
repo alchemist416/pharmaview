@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, use } from 'react';
+import { useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, TrendingUp, TrendingDown, Minus, Clock, Shield, Factory, FileWarning, History, type LucideIcon } from 'lucide-react';
 
@@ -79,9 +80,9 @@ function ComponentBar({ label, value, max, icon: Icon }: { label: string; value:
   );
 }
 
-export default function DrugDeepDive({ params }: { params: Promise<{ drug: string }> }) {
-  const resolvedParams = use(params);
-  const drugName = decodeURIComponent(resolvedParams.drug);
+export default function DrugDeepDive() {
+  const params = useParams<{ drug: string }>();
+  const drugName = decodeURIComponent(params.drug);
   const [prediction, setPrediction] = useState<Prediction | null>(null);
   const [classDrugs, setClassDrugs] = useState<Prediction[]>([]);
   const [fxData, setFxData] = useState<PredictionResponse['fx_data'] | null>(null);

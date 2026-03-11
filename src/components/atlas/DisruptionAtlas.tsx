@@ -67,6 +67,12 @@ interface AtlasData {
   regulatory: RegMilestone[];
 }
 
+interface LiveMeta {
+  isLive: boolean;
+  lastUpdated: string;
+  sources: string[];
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -113,17 +119,18 @@ export default function DisruptionAtlas() {
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [data, setData] = useState<AtlasData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [liveMeta, setLiveMeta] = useState<LiveMeta>({ isLive: false, lastUpdated: '', sources: [] });
 
-  // Fetch all data
+  // Fetch all data — try API routes first, fall back to static JSON
   useEffect(() => {
     async function load() {
       try {
         const [shortageRes, macroRes, geoRes, mfgRes, regRes] = await Promise.all([
-          fetch('/data/atlas-shortage-history.json'),
-          fetch('/data/atlas-macro.json'),
-          fetch('/data/atlas-geopolitical.json'),
-          fetch('/data/atlas-manufacturing-geo.json'),
-          fetch('/data/atlas-regulatory.json'),
+          fetch('/api/atlas/shortage-history').catch(() => fetch('/data/atlas-shortage-history.json')),
+          fetch('/api/atlas/macro').catch(() => fetch('/data/atlas-macro.json')),
+          fetch('/api/atlas/events').catch(() => fetch('/data/atlas-geopolitical.json')),
+          fetch('/api/atlas/manufacturing-geo').catch(() => fetch('/data/atlas-manufacturing-geo.json')),
+          fetch('/api/atlas/regulatory').catch(() => fetch('/data/atlas-regulatory.json')),
         ]);
 
         const shortageData = await shortageRes.json();
@@ -142,6 +149,18 @@ export default function DisruptionAtlas() {
           mfgGeo: mfgData.data,
           regulatory: regData.milestones,
         });
+
+        // Collect live metadata
+        const sources: string[] = [];
+        const liveFlags = [shortageData, macroData, geoData, mfgData, regData];
+        let anyLive = false;
+        let latestUpdate = '';
+        for (const d of liveFlags) {
+          if (d._live) anyLive = true;
+          if (d.source) sources.push(d.source);
+          if (d.last_updated && d.last_updated > latestUpdate) latestUpdate = d.last_updated;
+        }
+        setLiveMeta({ isLive: anyLive, lastUpdated: latestUpdate, sources });
       } catch (e) {
         console.error('Failed to load atlas data', e);
       } finally {
@@ -766,6 +785,25 @@ export default function DisruptionAtlas() {
 
   return (
     <div ref={containerRef} className="relative w-full">
+      {/* Live indicator bar */}
+      <div className="flex items-center gap-3 px-2 py-1.5 mb-1">
+        <div className="flex items-center gap-1.5">
+          <span className={`inline-block w-1.5 h-1.5 rounded-full ${liveMeta.isLive ? 'bg-accent-green animate-pulse' : 'bg-muted'}`} />
+          <span className={`font-mono text-[9px] font-bold uppercase ${liveMeta.isLive ? 'text-accent-green' : 'text-muted'}`}>
+            {liveMeta.isLive ? 'LIVE DATA' : 'STATIC DATA'}
+          </span>
+        </div>
+        {liveMeta.lastUpdated && (
+          <span className="font-mono text-[9px] text-muted/70">
+            Updated {new Date(liveMeta.lastUpdated).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          </span>
+        )}
+        {liveMeta.sources.length > 0 && (
+          <span className="font-mono text-[9px] text-muted/50 hidden xl:inline">
+            Sources: {Array.from(new Set(liveMeta.sources)).join(' · ')}
+          </span>
+        )}
+      </div>
       {/* Tooltip */}
       <div
         ref={tooltipRef}

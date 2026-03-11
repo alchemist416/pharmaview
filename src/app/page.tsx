@@ -8,6 +8,8 @@ import { CountryMapData, Recall, TradeFlow } from '@/lib/types';
 import { AlertTriangle, Shield, Globe, Search, Bug, ChevronDown, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
 
+interface LiveStatus { isLive: boolean; lastUpdated: string; source: string }
+
 export default function Dashboard() {
   const [countryData, setCountryData] = useState<CountryMapData[]>([]);
   const [shortages, setShortages] = useState<Record<string, unknown>[]>([]);
@@ -20,11 +22,13 @@ export default function Dashboard() {
   const [debugOpen, setDebugOpen] = useState(false);
   const [debugData, setDebugData] = useState<Record<string, unknown> | null>(null);
   const [apiDebug, setApiDebug] = useState<Record<string, unknown>>({});
+  const [liveStatus, setLiveStatus] = useState<Record<string, LiveStatus>>({});
 
   useEffect(() => {
     async function fetchData() {
       const errs: string[] = [];
       const debugInfo: Record<string, unknown> = {};
+      const live: Record<string, LiveStatus> = {};
 
       try {
         const [mapRes, shortageRes, recallRes, tradeRes] = await Promise.allSettled([
@@ -39,6 +43,7 @@ export default function Dashboard() {
           debugInfo.map = { status: mapRes.value.status, debug: data.debug, resultCount: (data.countries || []).length };
           if (mapRes.value.ok) {
             setCountryData(data.countries || []);
+            live.map = { isLive: !!data._live, lastUpdated: data.last_updated || '', source: data.source || '' };
           } else {
             errs.push(`Map: ${data.error || mapRes.value.status}`);
           }
@@ -52,6 +57,7 @@ export default function Dashboard() {
           debugInfo.shortages = { status: shortageRes.value.status, debug: data.debug, resultCount: (data.results || []).length };
           if (shortageRes.value.ok || (data.results && data.results.length > 0)) {
             setShortages(data.results || []);
+            live.shortages = { isLive: !!data._live, lastUpdated: data.last_updated || '', source: data.source || '' };
           } else {
             errs.push(`Shortages: ${data.error || shortageRes.value.status}`);
           }
@@ -65,6 +71,7 @@ export default function Dashboard() {
           debugInfo.recalls = { status: recallRes.value.status, debug: data.debug, resultCount: (data.results || []).length };
           if (recallRes.value.ok || (data.results && data.results.length > 0)) {
             setRecalls(data.results || []);
+            live.recalls = { isLive: !!data._live, lastUpdated: data.last_updated || '', source: data.source || '' };
           } else {
             errs.push(`Recalls: ${data.error || recallRes.value.status}`);
           }
@@ -76,8 +83,10 @@ export default function Dashboard() {
         if (tradeRes.status === 'fulfilled' && tradeRes.value.ok) {
           const data = await tradeRes.value.json();
           setTradeFlows(data.results || []);
+          live.trade = { isLive: !!data._live, lastUpdated: data.last_updated || '', source: data.source || '' };
         }
 
+        setLiveStatus(live);
         setApiDebug(debugInfo);
         setErrors(errs);
         setLastUpdated(new Date().toLocaleTimeString());
@@ -203,6 +212,9 @@ export default function Dashboard() {
             title="Shortage Watchlist"
             subtitle={lastUpdated ? `Updated ${lastUpdated}` : undefined}
             className="max-h-[500px] overflow-hidden"
+            isLive={liveStatus.shortages?.isLive}
+            lastUpdated={liveStatus.shortages?.lastUpdated}
+            dataSource={liveStatus.shortages?.source}
           >
             {loading ? (
               <div className="space-y-3">
@@ -243,6 +255,9 @@ export default function Dashboard() {
           title="Supply Chain Map"
           subtitle="FDA-registered drug manufacturers worldwide"
           className="min-h-[500px]"
+          isLive={liveStatus.map?.isLive}
+          lastUpdated={liveStatus.map?.lastUpdated}
+          dataSource={liveStatus.map?.source}
         >
           {loading ? (
             <div className="skeleton w-full h-[400px]" />
@@ -256,6 +271,9 @@ export default function Dashboard() {
           title="Regulatory Alerts"
           subtitle="Recent FDA enforcement actions"
           className="max-h-[600px] overflow-hidden"
+          isLive={liveStatus.recalls?.isLive}
+          lastUpdated={liveStatus.recalls?.lastUpdated}
+          dataSource={liveStatus.recalls?.source}
         >
           {loading ? (
             <div className="space-y-3">

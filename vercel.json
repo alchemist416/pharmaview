@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/refresh-establishments",
+      "schedule": "0 3 * * 1"
+    },
+    {
+      "path": "/api/cron/refresh-patents",
+      "schedule": "0 4 1 * *"
+    },
+    {
+      "path": "/api/cron/refresh-country-risk",
+      "schedule": "0 */6 * * *"
+    }
+  ]
+}

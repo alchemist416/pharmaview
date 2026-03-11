@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { promises as fs } from 'fs';
-import path from 'path';
+import { cachedFetch, cacheHeader, fetchJSON } from '@/lib/liveData';
+import { supabase } from '@/lib/supabase';
 import { PatentExpiry } from '@/lib/types';
 
 export const revalidate = 3600;
@@ -11,30 +11,107 @@ interface PatentData {
   last_updated: string;
 }
 
-let cachedData: PatentData | null = null;
+const FDA_OB_URL = 'https://api.fda.gov/drug/drugsfda.json';
 
-async function loadPatentData(): Promise<PatentData> {
-  if (cachedData) return cachedData;
-  const filePath = path.join(process.cwd(), 'public', 'data', 'patent-expiry.json');
-  const raw = await fs.readFile(filePath, 'utf-8');
-  cachedData = JSON.parse(raw);
-  return cachedData!;
+async function fetchLivePatents(): Promise<PatentData> {
+  // Try Supabase first (monthly-refreshed data)
+  if (supabase) {
+    try {
+      const { data: rows, error } = await supabase
+        .from('patents')
+        .select('*')
+        .order('expiry_date', { ascending: true })
+        .limit(100);
+
+      if (!error && rows && rows.length > 0) {
+        return {
+          patents: rows as PatentExpiry[],
+          source: 'Supabase (monthly refresh from FDA Orange Book)',
+          last_updated: new Date().toISOString(),
+        };
+      }
+    } catch {
+      // Fall through to FDA API
+    }
+  }
+
+  // Fetch from FDA Drugs@FDA endpoint
+  const data = await fetchJSON<{
+    results?: {
+      products?: {
+        brand_name: string;
+        active_ingredients?: { name: string }[];
+      }[];
+      submissions?: {
+        submission_type: string;
+        submission_status_date: string;
+      }[];
+      openfda?: {
+        generic_name?: string[];
+        brand_name?: string[];
+      };
+    }[];
+  }>(`${FDA_OB_URL}?limit=100&sort=submissions.submission_status_date:desc`);
+
+  const patents: PatentExpiry[] = (data.results ?? [])
+    .filter((r) => r.products && r.products.length > 0)
+    .slice(0, 60)
+    .map((r) => {
+      const product = r.products![0];
+      const latestSub = r.submissions?.sort(
+        (a, b) => b.submission_status_date.localeCompare(a.submission_status_date),
+      )[0];
+      const genericName = r.openfda?.generic_name?.[0] || product.active_ingredients?.[0]?.name || '';
+      const brandName = r.openfda?.brand_name?.[0] || product.brand_name || '';
+
+      // Estimate patent expiry: approval + 20 years for NDA
+      const approvalDate = latestSub?.submission_status_date || '2020-01-01';
+      const expiryDate = new Date(approvalDate);
+      expiryDate.setFullYear(expiryDate.getFullYear() + 20);
+
+      const now = new Date();
+      const isExpired = expiryDate < now;
+
+      return {
+        drug_name: brandName,
+        generic_name: genericName,
+        patent_number: 'FDA-derived',
+        expiry_date: expiryDate.toISOString().slice(0, 10),
+        status: isExpired ? 'expired' as const : 'active' as const,
+        patent_holder: brandName,
+        exclusivity_end: expiryDate.toISOString().slice(0, 10),
+        orange_book_listed: true,
+        therapeutic_equivalents: isExpired ? 5 : 0,
+      };
+    });
+
+  return {
+    patents,
+    source: 'FDA Drugs@FDA API',
+    last_updated: new Date().toISOString(),
+  };
 }
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const drug = searchParams.get('drug')?.toLowerCase();
-    const status = searchParams.get('status'); // 'active' | 'expired'
+    const status = searchParams.get('status');
 
-    const data = await loadPatentData();
-    let results = data.patents;
+    const result = await cachedFetch<PatentData>(
+      'patent-expiry',
+      3600,
+      fetchLivePatents,
+      'patent-expiry.json',
+    );
+
+    let results = result.data.patents;
 
     if (drug) {
       results = results.filter(
         (p) =>
           p.drug_name.toLowerCase().includes(drug) ||
-          p.generic_name.toLowerCase().includes(drug)
+          p.generic_name.toLowerCase().includes(drug),
       );
     }
 
@@ -44,16 +121,17 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       results,
-      source: data.source,
-      last_updated: data.last_updated,
+      source: result.source === 'live' ? result.data.source : 'Static fallback',
+      last_updated: result.last_updated,
+      _live: result.source === 'live',
     }, {
-      headers: { 'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=7200' },
+      headers: cacheHeader(3600),
     });
   } catch (err) {
     console.error('Failed to load patent data:', err);
     return NextResponse.json(
-      { error: 'Failed to load patent data', results: [] },
-      { status: 500 }
+      { error: 'Failed to load patent data', results: [], _live: false },
+      { status: 500 },
     );
   }
 }

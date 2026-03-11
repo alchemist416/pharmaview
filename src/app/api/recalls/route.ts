@@ -78,6 +78,9 @@ export async function GET(request: NextRequest) {
       meta: data.meta || null,
       results: data.results || [],
       debug,
+      _live: true,
+      last_updated: new Date().toISOString(),
+      source: 'openFDA Enforcement API',
     }, {
       headers: { 'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=7200' },
     });

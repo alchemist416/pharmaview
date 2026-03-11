@@ -176,6 +176,8 @@ export async function GET() {
       source: fdaEstablishments.length > 0
         ? 'DECRS + openFDA NDC Directory'
         : 'DECRS Establishment Registry',
+      _live: fdaEstablishments.length > 0,
+      last_updated: new Date().toISOString(),
     });
   } catch (err) {
     console.error('Failed to load map data:', err);

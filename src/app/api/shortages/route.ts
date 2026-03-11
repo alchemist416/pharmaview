@@ -58,6 +58,9 @@ export async function GET() {
       meta: data.meta || null,
       results: data.results || [],
       debug,
+      _live: true,
+      last_updated: new Date().toISOString(),
+      source: 'openFDA Drug Shortages API',
     }, {
       headers: { 'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=7200' },
     });

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { promises as fs } from 'fs';
-import path from 'path';
+import { cacheHeader } from '@/lib/liveData';
 import { CountryRisk, PatentExpiry } from '@/lib/types';
 import {
   calculateCompositeRisk,
@@ -11,43 +10,10 @@ import {
 
 export const revalidate = 3600;
 
-// In-memory caches
-let inspectionCache: Record<string, InspectionData> | null = null;
-let shortageHistoryCache: Record<string, ShortageHistoryData> | null = null;
-let countryRiskCache: Record<string, CountryRisk> | null = null;
-let patentCache: PatentExpiry[] | null = null;
-
-async function loadJSON<T>(filename: string): Promise<T> {
-  const filePath = path.join(process.cwd(), 'public', 'data', filename);
-  const raw = await fs.readFile(filePath, 'utf-8');
-  return JSON.parse(raw);
-}
-
-async function getInspections(): Promise<Record<string, InspectionData>> {
-  if (inspectionCache) return inspectionCache;
-  const data = await loadJSON<{ inspections: Record<string, InspectionData> }>('inspection-history.json');
-  inspectionCache = data.inspections;
-  return inspectionCache;
-}
-
-async function getShortageHistory(): Promise<Record<string, ShortageHistoryData>> {
-  if (shortageHistoryCache) return shortageHistoryCache;
-  const data = await loadJSON<{ shortage_history: Record<string, ShortageHistoryData> }>('inspection-history.json');
-  shortageHistoryCache = data.shortage_history;
-  return shortageHistoryCache;
-}
-
-async function getCountryRisk(): Promise<Record<string, CountryRisk>> {
-  if (countryRiskCache) return countryRiskCache;
-  countryRiskCache = await loadJSON<Record<string, CountryRisk>>('country-risk.json');
-  return countryRiskCache;
-}
-
-async function getPatents(): Promise<PatentExpiry[]> {
-  if (patentCache) return patentCache;
-  const data = await loadJSON<{ patents: PatentExpiry[] }>('patent-expiry.json');
-  patentCache = data.patents;
-  return patentCache;
+async function fetchFromApi<T>(url: string): Promise<T> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+  if (!res.ok) throw new Error(`API ${res.status}`);
+  return res.json();
 }
 
 export async function GET(request: NextRequest) {
@@ -59,39 +25,63 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Missing ?drug= parameter' }, { status: 400 });
     }
 
-    const [inspections, shortageHistory, countryRiskMap, patents] = await Promise.all([
-      getInspections(),
-      getShortageHistory(),
-      getCountryRisk(),
-      getPatents(),
-    ]);
-
-    // Also fetch manufacturer data from our own API
     const baseUrl = request.nextUrl.origin;
-    const [mfgRes, shortageRes] = await Promise.allSettled([
-      fetch(`${baseUrl}/api/manufacturers?drug=${encodeURIComponent(drug)}`),
-      fetch(`${baseUrl}/api/shortages`),
+
+    // Fetch from our live API routes in parallel
+    const [inspHistRes, countryRiskRes, patentRes, mfgRes, shortageRes] = await Promise.allSettled([
+      fetchFromApi<{
+        inspections: Record<string, InspectionData>;
+        shortage_history: Record<string, ShortageHistoryData>;
+        _live?: boolean;
+      }>(`${baseUrl}/api/inspection-history`),
+      fetchFromApi<Record<string, CountryRisk> & { _meta?: { _live?: boolean } }>(`${baseUrl}/api/country-risk`),
+      fetchFromApi<{ results: PatentExpiry[]; _live?: boolean }>(`${baseUrl}/api/patents?drug=${encodeURIComponent(drug)}`),
+      fetchFromApi<{ manufacturers: { country_code: string; country: string }[] }>(`${baseUrl}/api/manufacturers?drug=${encodeURIComponent(drug)}`),
+      fetchFromApi<{ results: Record<string, unknown>[] }>(`${baseUrl}/api/shortages`),
     ]);
 
-    // Parse manufacturer data
-    let manufacturers: { country_code: string; country: string }[] = [];
-    if (mfgRes.status === 'fulfilled' && mfgRes.value.ok) {
-      const data = await mfgRes.value.json();
-      manufacturers = (data.manufacturers || []).map((m: { country_code?: string; country?: string }) => ({
-        country_code: m.country_code || 'US',
-        country: m.country || 'United States',
-      }));
+    // Parse inspection data
+    let inspection: InspectionData | undefined;
+    let history: ShortageHistoryData | undefined;
+    let inspLive = false;
+    if (inspHistRes.status === 'fulfilled') {
+      const data = inspHistRes.value;
+      inspection = data.inspections?.[drug];
+      history = data.shortage_history?.[drug];
+      inspLive = !!data._live;
     }
 
-    // Build countryData from manufacturers
+    // Parse country risk
+    let countryRiskMap: Record<string, CountryRisk> = {};
+    let countryRiskLive = false;
+    if (countryRiskRes.status === 'fulfilled') {
+      const data = countryRiskRes.value;
+      countryRiskLive = !!data._meta?._live;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { _meta, ...rest } = data;
+      countryRiskMap = rest as Record<string, CountryRisk>;
+    }
+
+    // Parse patents
+    let patent: PatentExpiry | undefined;
+    let patentLive = false;
+    if (patentRes.status === 'fulfilled') {
+      patent = patentRes.value.results?.[0];
+      patentLive = !!patentRes.value._live;
+    }
+
+    // Parse manufacturers
+    let manufacturers: { country_code: string; country: string }[] = [];
+    if (mfgRes.status === 'fulfilled') {
+      manufacturers = mfgRes.value.manufacturers || [];
+    }
+
+    // Build countryData
     const countryMap = new Map<string, { country_code: string; country: string; count: number }>();
     for (const m of manufacturers) {
       const existing = countryMap.get(m.country_code);
-      if (existing) {
-        existing.count++;
-      } else {
-        countryMap.set(m.country_code, { country_code: m.country_code, country: m.country, count: 1 });
-      }
+      if (existing) existing.count++;
+      else countryMap.set(m.country_code, { country_code: m.country_code, country: m.country, count: 1 });
     }
     const countryData = Array.from(countryMap.values()).map((c) => ({
       country_code: c.country_code,
@@ -103,14 +93,13 @@ export async function GET(request: NextRequest) {
     // Parse shortage data
     let isActiveShortage = false;
     let shortageCount = 0;
-    if (shortageRes.status === 'fulfilled' && shortageRes.value.ok) {
-      const data = await shortageRes.value.json();
-      const results = (data.results || []) as Record<string, unknown>[];
+    if (shortageRes.status === 'fulfilled') {
+      const results = shortageRes.value.results || [];
       const q = drug.toLowerCase();
       const drugShortages = results.filter(
         (s) =>
           ((s.generic_name as string) || '').toLowerCase().includes(q) ||
-          ((s.brand_name as string) || '').toLowerCase().includes(q)
+          ((s.brand_name as string) || '').toLowerCase().includes(q),
       );
       shortageCount = drugShortages.length;
       isActiveShortage = drugShortages.some((s) => {
@@ -118,10 +107,6 @@ export async function GET(request: NextRequest) {
         return st.includes('current') || st.includes('active') || st.includes('ongoing');
       });
     }
-
-    const inspection = inspections[drug];
-    const history = shortageHistory[drug];
-    const patent = patents.find((p) => p.drug_name.toLowerCase() === drug);
 
     const compositeRisk = calculateCompositeRisk({
       isActiveShortage,
@@ -143,6 +128,8 @@ export async function GET(request: NextRequest) {
       isCurrentlyShortage: isActiveShortage,
     });
 
+    const isLive = inspLive || countryRiskLive || patentLive;
+
     return NextResponse.json({
       drug,
       composite_risk: compositeRisk,
@@ -154,14 +141,16 @@ export async function GET(request: NextRequest) {
         has_patent_data: !!patent,
         has_shortage_history: !!history,
       },
+      _live: isLive,
+      last_updated: new Date().toISOString(),
     }, {
-      headers: { 'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=7200' },
+      headers: cacheHeader(3600),
     });
   } catch (err) {
     console.error('Failed to compute risk score:', err);
     return NextResponse.json(
-      { error: 'Failed to compute risk score' },
-      { status: 500 }
+      { error: 'Failed to compute risk score', _live: false },
+      { status: 500 },
     );
   }
 }

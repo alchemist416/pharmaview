@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { promises as fs } from 'fs';
-import path from 'path';
 import { CountryRisk, PatentExpiry } from '@/lib/types';
+import { cachedFetch, cacheHeader, fetchJSON } from '@/lib/liveData';
 import {
   calculateCompositeRisk,
   predictShortage,
@@ -55,60 +54,77 @@ interface CategorySummary {
 }
 
 // ---------------------------------------------------------------------------
-// Data loaders (cached in-memory)
+// Data loaders — live API routes with in-memory cache fallback
 // ---------------------------------------------------------------------------
 
-let drugCategoriesCache: Record<string, string> | null = null;
-let inspectionCache: Record<string, InspectionData> | null = null;
-let shortageHistoryCache: Record<string, ShortageHistoryData> | null = null;
-let countryRiskCache: Record<string, CountryRisk> | null = null;
-let patentCache: PatentExpiry[] | null = null;
-let macroCache: { usd_inr: { year: number; rate: number }[]; freight_index: { year: number; index: number }[] } | null = null;
-
-async function loadJSON<T>(filename: string): Promise<T> {
-  const filePath = path.join(process.cwd(), 'public', 'data', filename);
-  const raw = await fs.readFile(filePath, 'utf-8');
-  return JSON.parse(raw);
+async function fetchApi<T>(path: string, baseUrl: string): Promise<T> {
+  try {
+    return await fetchJSON<T>(`${baseUrl}${path}`, { timeoutMs: 10000 });
+  } catch {
+    throw new Error(`Failed to fetch ${path}`);
+  }
 }
 
-async function getDrugCategories(): Promise<Record<string, string>> {
-  if (drugCategoriesCache) return drugCategoriesCache;
-  drugCategoriesCache = await loadJSON<Record<string, string>>('drug-categories.json');
-  return drugCategoriesCache;
+async function getDrugCategories(baseUrl: string): Promise<Record<string, string>> {
+  try {
+    const data = await fetchApi<{ categories: Record<string, string> }>('/api/drug-categories', baseUrl);
+    return data.categories;
+  } catch {
+    const result = await cachedFetch<Record<string, string>>('pred-drug-categories', 86400, async () => { throw new Error('skip'); }, 'drug-categories.json');
+    return result.data;
+  }
 }
 
-async function getInspections(): Promise<Record<string, InspectionData>> {
-  if (inspectionCache) return inspectionCache;
-  const data = await loadJSON<{ inspections: Record<string, InspectionData> }>('inspection-history.json');
-  inspectionCache = data.inspections;
-  return inspectionCache;
+async function getInspections(baseUrl: string): Promise<Record<string, InspectionData>> {
+  try {
+    const data = await fetchApi<{ inspections: Record<string, InspectionData> }>('/api/inspection-history', baseUrl);
+    return data.inspections;
+  } catch {
+    const result = await cachedFetch<{ inspections: Record<string, InspectionData> }>('pred-inspections', 3600, async () => { throw new Error('skip'); }, 'inspection-history.json');
+    return result.data.inspections;
+  }
 }
 
-async function getShortageHistory(): Promise<Record<string, ShortageHistoryData>> {
-  if (shortageHistoryCache) return shortageHistoryCache;
-  const data = await loadJSON<{ shortage_history: Record<string, ShortageHistoryData> }>('inspection-history.json');
-  shortageHistoryCache = data.shortage_history;
-  return shortageHistoryCache;
+async function getShortageHistory(baseUrl: string): Promise<Record<string, ShortageHistoryData>> {
+  try {
+    const data = await fetchApi<{ shortage_history: Record<string, ShortageHistoryData> }>('/api/inspection-history', baseUrl);
+    return data.shortage_history;
+  } catch {
+    const result = await cachedFetch<{ shortage_history: Record<string, ShortageHistoryData> }>('pred-shortage-history', 3600, async () => { throw new Error('skip'); }, 'inspection-history.json');
+    return result.data.shortage_history;
+  }
 }
 
-async function getCountryRisk(): Promise<Record<string, CountryRisk>> {
-  if (countryRiskCache) return countryRiskCache;
-  countryRiskCache = await loadJSON<Record<string, CountryRisk>>('country-risk.json');
-  return countryRiskCache;
+async function getCountryRisk(baseUrl: string): Promise<Record<string, CountryRisk>> {
+  try {
+    const data = await fetchApi<Record<string, CountryRisk> & { _meta?: unknown }>('/api/country-risk', baseUrl);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { _meta, ...rest } = data;
+    return rest as Record<string, CountryRisk>;
+  } catch {
+    const result = await cachedFetch<Record<string, CountryRisk>>('pred-country-risk', 21600, async () => { throw new Error('skip'); }, 'country-risk.json');
+    return result.data;
+  }
 }
 
-async function getPatents(): Promise<PatentExpiry[]> {
-  if (patentCache) return patentCache;
-  const data = await loadJSON<{ patents: PatentExpiry[] }>('patent-expiry.json');
-  patentCache = data.patents;
-  return patentCache;
+async function getPatents(baseUrl: string): Promise<PatentExpiry[]> {
+  try {
+    const data = await fetchApi<{ results: PatentExpiry[] }>('/api/patents', baseUrl);
+    return data.results;
+  } catch {
+    const result = await cachedFetch<{ patents: PatentExpiry[] }>('pred-patents', 3600, async () => { throw new Error('skip'); }, 'patent-expiry.json');
+    return result.data.patents;
+  }
 }
 
-async function getMacro(): Promise<typeof macroCache> {
-  if (macroCache) return macroCache;
-  const data = await loadJSON<{ usd_inr: { year: number; rate: number }[]; freight_index: { year: number; index: number }[] }>('atlas-macro.json');
-  macroCache = data;
-  return macroCache;
+async function getMacro(baseUrl: string): Promise<{ usd_inr: { year: number; rate: number }[]; freight_index: { year: number; index: number }[] } | null> {
+  try {
+    const data = await fetchApi<{ usd_inr: { year: number; rate: number }[]; freight_index: { year: number; index: number }[] }>('/api/atlas/macro', baseUrl);
+    return data;
+  } catch {
+    const result = await cachedFetch<{ usd_inr: { year: number; rate: number }[]; freight_index: { year: number; index: number }[] }>('pred-macro', 86400, async () => { throw new Error('skip'); }, 'atlas-macro.json');
+    return result.data;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -277,14 +293,16 @@ export async function GET(request: NextRequest) {
     const categoryFilter = searchParams.get('category');
     const drugFilter = searchParams.get('drug');
 
-    // Load all data sources in parallel
+    const baseUrl = request.nextUrl.origin;
+
+    // Load all data sources in parallel — uses live APIs with static fallback
     const [categories, inspections, shortageHistory, countryRiskMap, patents, macro] = await Promise.all([
-      getDrugCategories(),
-      getInspections(),
-      getShortageHistory(),
-      getCountryRisk(),
-      getPatents(),
-      getMacro(),
+      getDrugCategories(baseUrl),
+      getInspections(baseUrl),
+      getShortageHistory(baseUrl),
+      getCountryRisk(baseUrl),
+      getPatents(baseUrl),
+      getMacro(baseUrl),
     ]);
 
     // FX analysis
@@ -445,8 +463,12 @@ export async function GET(request: NextRequest) {
       fx_data: fxData,
     };
 
-    return NextResponse.json(response, {
-      headers: { 'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=7200' },
+    return NextResponse.json({
+      ...response,
+      _live: true,
+      last_updated: response.generated_at,
+    }, {
+      headers: cacheHeader(3600),
     });
   } catch (err) {
     console.error('Prediction engine error:', err);
