@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
-import { fetchJSON, cacheHeader } from '@/lib/liveData';
+import { cacheHeader } from '@/lib/liveData';
 import { Signal, SignalSnapshot, IRAN_CRISIS_SIGNAL, calculateOverallStress } from '@/lib/signals';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 30; // Allow up to 30s on Vercel Pro, 10s on Free
+
+const FEED_TIMEOUT = 6000; // 6s per feed — all run in parallel, must finish within function timeout
 
 // ---------------------------------------------------------------------------
 // Feed result type — tracks success/failure per feed
@@ -18,23 +21,68 @@ interface FeedResult {
 const TOTAL_LIVE_FEEDS = 5;
 
 // ---------------------------------------------------------------------------
+// Safe fetch helpers with logging
+// ---------------------------------------------------------------------------
+
+async function safeFetchJSON<T>(url: string, source: string): Promise<T> {
+  console.log(`[signals] Fetching ${source}...`);
+  const start = Date.now();
+  const res = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(FEED_TIMEOUT),
+  });
+  const body = await res.text();
+  const elapsed = Date.now() - start;
+  console.log(`[signals] ${source} — status=${res.status} elapsed=${elapsed}ms body=${body.slice(0, 200)}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${body.slice(0, 100)}`);
+  return JSON.parse(body) as T;
+}
+
+async function safeFetchCSV(url: string, source: string): Promise<string> {
+  console.log(`[signals] Fetching ${source}...`);
+  const start = Date.now();
+  const res = await fetch(url, {
+    signal: AbortSignal.timeout(FEED_TIMEOUT),
+  });
+  const body = await res.text();
+  const elapsed = Date.now() - start;
+  console.log(`[signals] ${source} — status=${res.status} elapsed=${elapsed}ms lines=${body.split('\n').length} preview=${body.slice(0, 200)}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${body.slice(0, 100)}`);
+  return body;
+}
+
+function parseCSVValues(csv: string): number[] {
+  return csv
+    .trim()
+    .split('\n')
+    .slice(1) // skip header
+    .map((line) => {
+      const val = line.split(',')[1]?.trim();
+      if (!val || val === '.' || val === '') return NaN;
+      return parseFloat(val);
+    })
+    .filter((v) => !isNaN(v));
+}
+
+// ---------------------------------------------------------------------------
 // SIGNAL 1 — Geopolitical Events (ReliefWeb)
 // ---------------------------------------------------------------------------
 
 async function fetchGeopoliticalSignal(): Promise<FeedResult> {
   const source = 'ReliefWeb Disasters API';
   try {
-    const data = await fetchJSON<{
+    const data = await safeFetchJSON<{
       totalCount?: number;
       count?: number;
       data?: { fields?: { name?: string; status?: string; type?: { name: string }[] } }[];
     }>(
       'https://api.reliefweb.int/v1/disasters?appname=pharmaview&filter[field]=status&filter[value]=ongoing&limit=20&fields[include][]=name&fields[include][]=status&fields[include][]=type',
-      { timeoutMs: 10000 },
+      source,
     );
 
     const disasters = data.data ?? [];
     const count = disasters.length;
+    console.log(`[signals] ${source} — parsed ${count} disasters`);
 
     const pharmaRelevant = disasters.filter((d) => {
       const types = (d.fields?.type ?? []).map((t) => t.name.toLowerCase());
@@ -68,7 +116,7 @@ async function fetchGeopoliticalSignal(): Promise<FeedResult> {
       ok: true,
     };
   } catch (err) {
-    console.error('[signals] Geopolitical fetch failed:', err instanceof Error ? err.message : err);
+    console.error(`[signals] ${source} — FAILED:`, err instanceof Error ? err.message : err);
     return { signal: null, source, ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -78,22 +126,15 @@ async function fetchGeopoliticalSignal(): Promise<FeedResult> {
 // ---------------------------------------------------------------------------
 
 async function fetchShippingSignal(): Promise<FeedResult> {
-  const source = 'FRED WPUSI012011';
+  const source = 'FRED Freight (WPUSI012011)';
   try {
-    const res = await fetch(
+    const csvText = await safeFetchCSV(
       'https://fred.stlouisfed.org/graph/fredgraph.csv?id=WPUSI012011',
-      { signal: AbortSignal.timeout(10000) },
+      source,
     );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const csvText = await res.text();
 
-    const lines = csvText.trim().split('\n').slice(1);
-    const values = lines
-      .map((line) => {
-        const val = line.split(',')[1]?.trim();
-        return val === '.' ? NaN : parseFloat(val);
-      })
-      .filter((v) => !isNaN(v));
+    const values = parseCSVValues(csvText);
+    console.log(`[signals] ${source} — parsed ${values.length} numeric values`);
 
     if (values.length < 4) {
       return {
@@ -103,7 +144,7 @@ async function fetchShippingSignal(): Promise<FeedResult> {
           severity: 'LOW',
           score: 5,
           title: 'Freight data: insufficient history',
-          summary: `Only ${values.length} data points from FRED. Unable to compute trend.`,
+          summary: `Only ${values.length} data points from FRED.`,
           data_points: [`Data points: ${values.length}`],
           source,
           detected_at: new Date().toISOString(),
@@ -145,7 +186,7 @@ async function fetchShippingSignal(): Promise<FeedResult> {
       ok: true,
     };
   } catch (err) {
-    console.error('[signals] Shipping fetch failed:', err instanceof Error ? err.message : err);
+    console.error(`[signals] ${source} — FAILED:`, err instanceof Error ? err.message : err);
     return { signal: null, source, ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -155,35 +196,17 @@ async function fetchShippingSignal(): Promise<FeedResult> {
 // ---------------------------------------------------------------------------
 
 async function fetchCurrencySignal(): Promise<FeedResult> {
-  const source = 'FRED DEXINUS + DEXCHUS';
+  const source = 'FRED Currency (DEXINUS + DEXCHUS)';
   try {
-    const [inrRes, cnyRes] = await Promise.all([
-      fetch('https://fred.stlouisfed.org/graph/fredgraph.csv?id=DEXINUS', {
-        signal: AbortSignal.timeout(10000),
-      }),
-      fetch('https://fred.stlouisfed.org/graph/fredgraph.csv?id=DEXCHUS', {
-        signal: AbortSignal.timeout(10000),
-      }),
+    // Fetch both in parallel within this feed
+    const [inrCsv, cnyCsv] = await Promise.all([
+      safeFetchCSV('https://fred.stlouisfed.org/graph/fredgraph.csv?id=DEXINUS', 'FRED USD/INR'),
+      safeFetchCSV('https://fred.stlouisfed.org/graph/fredgraph.csv?id=DEXCHUS', 'FRED USD/CNY'),
     ]);
 
-    if (!inrRes.ok) throw new Error(`INR HTTP ${inrRes.status}`);
-    if (!cnyRes.ok) throw new Error(`CNY HTTP ${cnyRes.status}`);
-
-    const [inrCsv, cnyCsv] = await Promise.all([inrRes.text(), cnyRes.text()]);
-
-    const parseCSV = (csv: string): number[] =>
-      csv
-        .trim()
-        .split('\n')
-        .slice(1)
-        .map((line) => {
-          const val = line.split(',')[1]?.trim();
-          return val === '.' ? NaN : parseFloat(val);
-        })
-        .filter((v) => !isNaN(v));
-
-    const inrVals = parseCSV(inrCsv);
-    const cnyVals = parseCSV(cnyCsv);
+    const inrVals = parseCSVValues(inrCsv);
+    const cnyVals = parseCSVValues(cnyCsv);
+    console.log(`[signals] ${source} — parsed INR=${inrVals.length} vals, CNY=${cnyVals.length} vals`);
 
     const calcChange = (vals: number[]): number => {
       if (vals.length < 22) return 0;
@@ -224,7 +247,7 @@ async function fetchCurrencySignal(): Promise<FeedResult> {
       ok: true,
     };
   } catch (err) {
-    console.error('[signals] Currency fetch failed:', err instanceof Error ? err.message : err);
+    console.error(`[signals] ${source} — FAILED:`, err instanceof Error ? err.message : err);
     return { signal: null, source, ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -234,18 +257,19 @@ async function fetchCurrencySignal(): Promise<FeedResult> {
 // ---------------------------------------------------------------------------
 
 async function fetchEnforcementSignal(): Promise<FeedResult> {
-  const source = 'openFDA Drug Enforcement';
+  const source = 'openFDA Enforcement';
   try {
-    const data = await fetchJSON<{
+    const data = await safeFetchJSON<{
       meta?: { results?: { total: number } };
       results?: { report_date?: string; classification?: string }[];
     }>(
       'https://api.fda.gov/drug/enforcement.json?limit=50&sort=report_date:desc',
-      { timeoutMs: 10000 },
+      source,
     );
 
     const results = data.results ?? [];
     const total = data.meta?.results?.total ?? results.length;
+    console.log(`[signals] ${source} — ${results.length} results, total=${total}`);
 
     const classI = results.filter((r) => r.classification === 'Class I').length;
     const classII = results.filter((r) => r.classification === 'Class II').length;
@@ -276,35 +300,36 @@ async function fetchEnforcementSignal(): Promise<FeedResult> {
       ok: true,
     };
   } catch (err) {
-    console.error('[signals] FDA enforcement fetch failed:', err instanceof Error ? err.message : err);
+    console.error(`[signals] ${source} — FAILED:`, err instanceof Error ? err.message : err);
     return { signal: null, source, ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
 // ---------------------------------------------------------------------------
 // SIGNAL 5 — Active Drug Shortages Trend
+// openFDA shortages endpoint: https://api.fda.gov/drug/drugshortages.json
 // ---------------------------------------------------------------------------
 
 async function fetchShortageTrendSignal(): Promise<FeedResult> {
   const source = 'FDA Drug Shortages';
   try {
-    const data = await fetchJSON<{
+    const data = await safeFetchJSON<{
       meta?: { results?: { total: number } };
       results?: { generic_name?: string; status?: string }[];
     }>(
       'https://api.fda.gov/drug/drugshortages.json?limit=100',
-      { timeoutMs: 10000 },
+      source,
     );
 
     const results = data.results ?? [];
     const total = data.meta?.results?.total ?? results.length;
-    // FDA shortages API may use "Currently in Shortage" or "Active" as status
-    const active = results.filter(
-      (r) => {
-        const s = (r.status ?? '').toLowerCase();
-        return s.includes('current') || s.includes('active') || s.includes('shortage');
-      },
-    ).length;
+    console.log(`[signals] ${source} — ${results.length} results, total=${total}`);
+
+    // FDA shortages may use "Currently in Shortage", "Active", etc.
+    const active = results.filter((r) => {
+      const s = (r.status ?? '').toLowerCase();
+      return s.includes('current') || s.includes('active') || s.includes('shortage');
+    }).length;
 
     const effectiveActive = active > 0 ? active : results.length;
     const score = Math.min(100, Math.max(5, Math.round((effectiveActive / 150) * 60)));
@@ -333,7 +358,7 @@ async function fetchShortageTrendSignal(): Promise<FeedResult> {
       ok: true,
     };
   } catch (err) {
-    console.error('[signals] Shortage fetch failed:', err instanceof Error ? err.message : err);
+    console.error(`[signals] ${source} — FAILED:`, err instanceof Error ? err.message : err);
     return { signal: null, source, ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -343,6 +368,10 @@ async function fetchShortageTrendSignal(): Promise<FeedResult> {
 // ---------------------------------------------------------------------------
 
 async function collectSignals(): Promise<SignalSnapshot> {
+  console.log('[signals] Starting signal collection...');
+  const start = Date.now();
+
+  // ALL feeds run in PARALLEL via Promise.allSettled
   const results = await Promise.allSettled([
     fetchGeopoliticalSignal(),
     fetchShippingSignal(),
@@ -351,12 +380,16 @@ async function collectSignals(): Promise<SignalSnapshot> {
     fetchShortageTrendSignal(),
   ]);
 
+  const elapsed = Date.now() - start;
+  console.log(`[signals] All feeds completed in ${elapsed}ms`);
+
   // Iran crisis is ALWAYS present as a visible named signal
   const signals: Signal[] = [IRAN_CRISIS_SIGNAL];
   const sources: string[] = ['ACTIVE GEOPOLITICAL EVENT: Strait of Hormuz Conflict'];
 
   let liveFeedsOk = 0;
   let failedFeeds = 0;
+  const failedNames: string[] = [];
 
   for (const result of results) {
     if (result.status === 'fulfilled') {
@@ -365,13 +398,16 @@ async function collectSignals(): Promise<SignalSnapshot> {
         signals.push(feed.signal);
         sources.push(feed.source);
         liveFeedsOk++;
+        console.log(`[signals] OK: ${feed.source} — score=${feed.signal.score} severity=${feed.signal.severity}`);
       } else if (!feed.ok) {
         failedFeeds++;
-        console.warn(`[signals] Feed failed: ${feed.source} — ${feed.error}`);
+        failedNames.push(feed.source);
+        console.warn(`[signals] FEED FAILED: ${feed.source} — ${feed.error}`);
       }
     } else {
       failedFeeds++;
-      console.warn(`[signals] Feed rejected:`, result.reason);
+      failedNames.push('unknown');
+      console.warn(`[signals] FEED REJECTED:`, result.reason);
     }
   }
 
@@ -379,6 +415,8 @@ async function collectSignals(): Promise<SignalSnapshot> {
   const elevatedSignals = signals.filter(
     (s) => s.severity === 'CRITICAL' || s.severity === 'HIGH' || s.score >= 40,
   ).length;
+
+  console.log(`[signals] SUMMARY: ${signals.length} signals total, ${liveFeedsOk}/${TOTAL_LIVE_FEEDS} live feeds OK, ${failedFeeds} failed [${failedNames.join(', ')}], ${elevatedSignals} elevated`);
 
   return {
     signals,
@@ -404,7 +442,7 @@ export async function GET() {
     const snapshot = await collectSignals();
     return NextResponse.json(snapshot, { headers: cacheHeader(3600) });
   } catch (err) {
-    console.error('[signals] Critical failure:', err);
+    console.error('[signals] CRITICAL FAILURE:', err);
 
     // Even on total catastrophic failure, return the Iran crisis signal
     const fallback: SignalSnapshot = {
