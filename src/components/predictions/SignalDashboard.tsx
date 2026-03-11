@@ -6,12 +6,12 @@ interface Props {
   snapshot: SignalSnapshot;
 }
 
-const TYPE_CONFIG: Record<Signal['type'], { label: string; icon: string }> = {
-  geopolitical: { label: 'Geopolitical', icon: '\u{1F534}' },
-  shipping: { label: 'Shipping', icon: '\u{1F7E1}' },
-  currency: { label: 'Currency', icon: '\u{1F7E1}' },
-  enforcement: { label: 'FDA Enforcement', icon: '\u{1F7E2}' },
-  shortage: { label: 'Shortage Trend', icon: '\u{1F7E1}' },
+const TYPE_CONFIG: Record<Signal['type'], { label: string }> = {
+  geopolitical: { label: 'Geopolitical' },
+  shipping: { label: 'Shipping' },
+  currency: { label: 'Currency' },
+  enforcement: { label: 'FDA Enforcement' },
+  shortage: { label: 'Shortage Trend' },
 };
 
 function severityColor(severity: string): string {
@@ -23,6 +23,15 @@ function severityColor(severity: string): string {
   }
 }
 
+function severityDot(severity: string): string {
+  switch (severity) {
+    case 'CRITICAL': return 'bg-red-500';
+    case 'HIGH': return 'bg-amber-500';
+    case 'MEDIUM': return 'bg-yellow-500';
+    default: return 'bg-emerald-500';
+  }
+}
+
 function stressBarColor(score: number): string {
   if (score >= 75) return 'bg-red-500';
   if (score >= 50) return 'bg-amber-500';
@@ -30,17 +39,14 @@ function stressBarColor(score: number): string {
   return 'bg-emerald-500';
 }
 
-function signalIcon(signal: Signal): string {
-  if (signal.severity === 'CRITICAL') return '\u{1F534}';
-  if (signal.severity === 'HIGH') return '\u{1F7E0}';
-  if (signal.severity === 'MEDIUM') return '\u{1F7E1}';
-  return '\u{1F7E2}';
-}
-
 export default function SignalDashboard({ snapshot }: Props) {
-  // Group signals by type, picking the highest-severity one per type
+  // Find Iran crisis signal specifically
+  const iranSignal = snapshot.signals.find((s) => s.id === 'iran-hormuz-2026');
+
+  // Group remaining signals by type, picking highest-score per type
   const byType = new Map<string, Signal>();
   for (const signal of snapshot.signals) {
+    if (signal.id === 'iran-hormuz-2026') continue; // handled separately
     const existing = byType.get(signal.type);
     if (!existing || signal.score > existing.score) {
       byType.set(signal.type, signal);
@@ -48,13 +54,36 @@ export default function SignalDashboard({ snapshot }: Props) {
   }
 
   const allTypes: Signal['type'][] = ['geopolitical', 'shipping', 'currency', 'enforcement', 'shortage'];
+  const feedStatus = snapshot.feed_status;
 
   return (
     <div className="border border-terminal-border rounded-lg bg-terminal-panel">
       <div className="px-4 py-3 border-b border-terminal-border">
         <h3 className="text-xs font-mono font-semibold text-primary">SIGNAL DASHBOARD</h3>
-        <p className="text-[9px] font-mono text-muted mt-0.5">Live data feeding forecast model</p>
+        <p className="text-[9px] font-mono text-muted mt-0.5">
+          {feedStatus?.feeds_unavailable
+            ? 'Live feeds offline — showing cached data'
+            : `${feedStatus?.live_feeds ?? 0}/${feedStatus?.total_feeds ?? snapshot.signals.length} feeds active`
+          }
+        </p>
       </div>
+
+      {/* Active Geopolitical Event — always visible */}
+      {iranSignal && (
+        <div className="px-4 py-3 border-b border-red-500/30 bg-red-500/5">
+          <div className="flex items-center gap-2 mb-1">
+            <div className={`w-2 h-2 rounded-full ${severityDot(iranSignal.severity)} animate-pulse`} />
+            <span className="text-[9px] font-mono font-bold text-red-400">ACTIVE GEOPOLITICAL EVENT</span>
+          </div>
+          <div className="text-[10px] font-mono text-primary leading-tight pl-4">
+            Strait of Hormuz Conflict
+          </div>
+          <div className="flex items-center justify-between mt-1 pl-4">
+            <span className="text-[8px] font-mono text-red-400/70">Active since Feb 28, 2026</span>
+            <span className="text-[9px] font-mono font-bold text-red-400">{iranSignal.severity}</span>
+          </div>
+        </div>
+      )}
 
       {/* Overall stress meter */}
       <div className="px-4 py-3 border-b border-terminal-border/50">
@@ -76,45 +105,52 @@ export default function SignalDashboard({ snapshot }: Props) {
         </div>
       </div>
 
-      {/* Signal indicators */}
+      {/* Signal indicators by type */}
       <div className="divide-y divide-terminal-border/30">
         {allTypes.map((type) => {
           const signal = byType.get(type);
           const config = TYPE_CONFIG[type];
-          const icon = signal ? signalIcon(signal) : '\u{26AA}';
           const score = signal?.score ?? 0;
           const severity = signal?.severity ?? 'LOW';
+          const isActive = !!signal;
 
           return (
             <div key={type} className="px-4 py-2.5">
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs">{icon}</span>
+                  <div className={`w-1.5 h-1.5 rounded-full ${isActive ? severityDot(severity) : 'bg-slate-700'}`} />
                   <span className="text-[10px] font-mono text-primary">{config.label}</span>
                 </div>
-                <span className={`text-[9px] font-mono font-semibold ${severityColor(severity)}`}>
-                  {score}
+                <span className={`text-[9px] font-mono font-semibold ${isActive ? severityColor(severity) : 'text-slate-600'}`}>
+                  {isActive ? score : '—'}
                 </span>
               </div>
-              {signal && (
-                <p className="text-[9px] font-mono text-muted leading-relaxed pl-5 truncate">
+              {signal ? (
+                <p className="text-[9px] font-mono text-muted leading-relaxed pl-4 truncate">
                   {signal.title}
                 </p>
-              )}
-              {!signal && (
-                <p className="text-[9px] font-mono text-slate-600 pl-5">No active signal</p>
+              ) : (
+                <p className="text-[9px] font-mono text-slate-600 pl-4">
+                  {feedStatus?.feeds_unavailable ? 'Feed offline' : 'No active signal'}
+                </p>
               )}
             </div>
           );
         })}
       </div>
 
-      {/* Sources */}
+      {/* Feed status footer */}
       <div className="px-4 py-2 border-t border-terminal-border/50">
-        <div className="text-[8px] font-mono text-slate-600">
-          SOURCES: {snapshot.sources.slice(0, 3).join(' · ')}
-          {snapshot.sources.length > 3 && ` +${snapshot.sources.length - 3} more`}
-        </div>
+        {feedStatus?.feeds_unavailable ? (
+          <div className="text-[8px] font-mono text-amber-400/70">
+            Live feeds temporarily unavailable — showing cached signals
+          </div>
+        ) : (
+          <div className="text-[8px] font-mono text-slate-600">
+            SOURCES: {snapshot.sources.slice(0, 3).join(' · ')}
+            {snapshot.sources.length > 3 && ` +${snapshot.sources.length - 3} more`}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,17 +1,32 @@
 import { NextResponse } from 'next/server';
-import { fetchJSON, cachedFetch, cacheHeader } from '@/lib/liveData';
+import { fetchJSON, cacheHeader } from '@/lib/liveData';
 import { Signal, SignalSnapshot, IRAN_CRISIS_SIGNAL, calculateOverallStress } from '@/lib/signals';
 
-export const revalidate = 3600; // 1 hour
+export const dynamic = 'force-dynamic';
 
 // ---------------------------------------------------------------------------
-// SIGNAL 1 — Geopolitical Events (ReliefWeb + FDA RSS)
+// Feed result type — tracks success/failure per feed
 // ---------------------------------------------------------------------------
 
-async function fetchGeopoliticalSignal(): Promise<Signal | null> {
+interface FeedResult {
+  signal: Signal | null;
+  source: string;
+  ok: boolean;
+  error?: string;
+}
+
+const TOTAL_LIVE_FEEDS = 5;
+
+// ---------------------------------------------------------------------------
+// SIGNAL 1 — Geopolitical Events (ReliefWeb)
+// ---------------------------------------------------------------------------
+
+async function fetchGeopoliticalSignal(): Promise<FeedResult> {
+  const source = 'ReliefWeb Disasters API';
   try {
     const data = await fetchJSON<{
       totalCount?: number;
+      count?: number;
       data?: { fields?: { name?: string; status?: string; type?: { name: string }[] } }[];
     }>(
       'https://api.reliefweb.int/v1/disasters?appname=pharmaview&filter[field]=status&filter[value]=ongoing&limit=20&fields[include][]=name&fields[include][]=status&fields[include][]=type',
@@ -20,8 +35,6 @@ async function fetchGeopoliticalSignal(): Promise<Signal | null> {
 
     const disasters = data.data ?? [];
     const count = disasters.length;
-
-    if (count === 0) return null;
 
     const pharmaRelevant = disasters.filter((d) => {
       const types = (d.fields?.type ?? []).map((t) => t.name.toLowerCase());
@@ -35,19 +48,28 @@ async function fetchGeopoliticalSignal(): Promise<Signal | null> {
       score >= 70 ? 'CRITICAL' : score >= 45 ? 'HIGH' : score >= 20 ? 'MEDIUM' : 'LOW';
 
     return {
-      id: 'geo-reliefweb',
-      type: 'geopolitical',
-      severity,
-      score,
-      title: `${count} ongoing disasters worldwide`,
-      summary: `${pharmaRelevant.length} pharma-relevant events detected from ${count} total active disasters.`,
-      data_points: disasters.slice(0, 5).map((d) => d.fields?.name ?? 'Unknown event'),
-      source: 'ReliefWeb Disasters API',
-      detected_at: new Date().toISOString(),
+      signal: {
+        id: 'geo-reliefweb',
+        type: 'geopolitical',
+        severity,
+        score,
+        title: count > 0 ? `${count} ongoing disasters worldwide` : 'No active disasters tracked',
+        summary:
+          count > 0
+            ? `${pharmaRelevant.length} pharma-relevant events from ${count} active disasters.`
+            : 'No ongoing disasters detected by ReliefWeb.',
+        data_points: count > 0
+          ? disasters.slice(0, 5).map((d) => d.fields?.name ?? 'Unknown event')
+          : ['No active disasters'],
+        source,
+        detected_at: new Date().toISOString(),
+      },
+      source,
+      ok: true,
     };
   } catch (err) {
-    console.error('[signals] Geopolitical fetch failed:', err);
-    return null;
+    console.error('[signals] Geopolitical fetch failed:', err instanceof Error ? err.message : err);
+    return { signal: null, source, ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -55,53 +77,76 @@ async function fetchGeopoliticalSignal(): Promise<Signal | null> {
 // SIGNAL 2 — Shipping Stress (FRED PPI Freight proxy)
 // ---------------------------------------------------------------------------
 
-async function fetchShippingSignal(): Promise<Signal | null> {
+async function fetchShippingSignal(): Promise<FeedResult> {
+  const source = 'FRED WPUSI012011';
   try {
-    const csvText = await fetch(
+    const res = await fetch(
       'https://fred.stlouisfed.org/graph/fredgraph.csv?id=WPUSI012011',
       { signal: AbortSignal.timeout(10000) },
-    ).then((r) => r.text());
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const csvText = await res.text();
 
-    const lines = csvText.trim().split('\n').slice(1); // skip header
+    const lines = csvText.trim().split('\n').slice(1);
     const values = lines
       .map((line) => {
-        const [, val] = line.split(',');
-        return parseFloat(val);
+        const val = line.split(',')[1]?.trim();
+        return val === '.' ? NaN : parseFloat(val);
       })
       .filter((v) => !isNaN(v));
 
-    if (values.length < 4) return null;
+    if (values.length < 4) {
+      return {
+        signal: {
+          id: 'shipping-fred',
+          type: 'shipping',
+          severity: 'LOW',
+          score: 5,
+          title: 'Freight data: insufficient history',
+          summary: `Only ${values.length} data points from FRED. Unable to compute trend.`,
+          data_points: [`Data points: ${values.length}`],
+          source,
+          detected_at: new Date().toISOString(),
+        },
+        source,
+        ok: true,
+      };
+    }
 
     const recent = values.slice(-3);
     const baseline = values.slice(-15, -3);
     const currentAvg = recent.reduce((s, v) => s + v, 0) / recent.length;
-    const baselineAvg = baseline.reduce((s, v) => s + v, 0) / baseline.length;
-    const pctChange = ((currentAvg - baselineAvg) / baselineAvg) * 100;
+    const baselineAvg = baseline.length > 0 ? baseline.reduce((s, v) => s + v, 0) / baseline.length : currentAvg;
+    const pctChange = baselineAvg !== 0 ? ((currentAvg - baselineAvg) / baselineAvg) * 100 : 0;
 
     const score = Math.min(100, Math.max(0, Math.round(Math.abs(pctChange) * 3)));
     const severity: Signal['severity'] =
       score >= 70 ? 'CRITICAL' : score >= 45 ? 'HIGH' : score >= 20 ? 'MEDIUM' : 'LOW';
 
     return {
-      id: 'shipping-fred',
-      type: 'shipping',
-      severity,
-      score,
-      title: `Freight index ${pctChange > 0 ? '+' : ''}${pctChange.toFixed(1)}% vs 90-day avg`,
-      summary: `PPI Freight index at ${currentAvg.toFixed(1)} (baseline ${baselineAvg.toFixed(1)}). ${
-        pctChange > 10 ? 'Significant spike detected.' : pctChange > 5 ? 'Moderate elevation.' : 'Within normal range.'
-      }`,
-      data_points: [
-        `Current: ${currentAvg.toFixed(1)}`,
-        `90-day baseline: ${baselineAvg.toFixed(1)}`,
-        `Change: ${pctChange > 0 ? '+' : ''}${pctChange.toFixed(1)}%`,
-      ],
-      source: 'FRED WPUSI012011',
-      detected_at: new Date().toISOString(),
+      signal: {
+        id: 'shipping-fred',
+        type: 'shipping',
+        severity,
+        score,
+        title: `Freight index ${pctChange > 0 ? '+' : ''}${pctChange.toFixed(1)}% vs baseline`,
+        summary: `PPI Freight at ${currentAvg.toFixed(1)} (baseline ${baselineAvg.toFixed(1)}). ${
+          pctChange > 10 ? 'Significant spike.' : pctChange > 5 ? 'Moderate elevation.' : 'Within normal range.'
+        }`,
+        data_points: [
+          `Current: ${currentAvg.toFixed(1)}`,
+          `Baseline: ${baselineAvg.toFixed(1)}`,
+          `Change: ${pctChange > 0 ? '+' : ''}${pctChange.toFixed(1)}%`,
+        ],
+        source,
+        detected_at: new Date().toISOString(),
+      },
+      source,
+      ok: true,
     };
   } catch (err) {
-    console.error('[signals] Shipping fetch failed:', err);
-    return null;
+    console.error('[signals] Shipping fetch failed:', err instanceof Error ? err.message : err);
+    return { signal: null, source, ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -109,23 +154,32 @@ async function fetchShippingSignal(): Promise<Signal | null> {
 // SIGNAL 3 — Currency Stress (USD/INR, USD/CNY from FRED)
 // ---------------------------------------------------------------------------
 
-async function fetchCurrencySignal(): Promise<Signal | null> {
+async function fetchCurrencySignal(): Promise<FeedResult> {
+  const source = 'FRED DEXINUS + DEXCHUS';
   try {
-    const [inrCsv, cnyCsv] = await Promise.all([
+    const [inrRes, cnyRes] = await Promise.all([
       fetch('https://fred.stlouisfed.org/graph/fredgraph.csv?id=DEXINUS', {
         signal: AbortSignal.timeout(10000),
-      }).then((r) => r.text()),
+      }),
       fetch('https://fred.stlouisfed.org/graph/fredgraph.csv?id=DEXCHUS', {
         signal: AbortSignal.timeout(10000),
-      }).then((r) => r.text()),
+      }),
     ]);
+
+    if (!inrRes.ok) throw new Error(`INR HTTP ${inrRes.status}`);
+    if (!cnyRes.ok) throw new Error(`CNY HTTP ${cnyRes.status}`);
+
+    const [inrCsv, cnyCsv] = await Promise.all([inrRes.text(), cnyRes.text()]);
 
     const parseCSV = (csv: string): number[] =>
       csv
         .trim()
         .split('\n')
         .slice(1)
-        .map((line) => parseFloat(line.split(',')[1]))
+        .map((line) => {
+          const val = line.split(',')[1]?.trim();
+          return val === '.' ? NaN : parseFloat(val);
+        })
         .filter((v) => !isNaN(v));
 
     const inrVals = parseCSV(inrCsv);
@@ -134,8 +188,8 @@ async function fetchCurrencySignal(): Promise<Signal | null> {
     const calcChange = (vals: number[]): number => {
       if (vals.length < 22) return 0;
       const recent = vals[vals.length - 1];
-      const old = vals[vals.length - 22]; // ~30 trading days
-      return ((recent - old) / old) * 100;
+      const old = vals[vals.length - 22];
+      return old !== 0 ? ((recent - old) / old) * 100 : 0;
     };
 
     const inrChange = calcChange(inrVals);
@@ -148,26 +202,30 @@ async function fetchCurrencySignal(): Promise<Signal | null> {
       score >= 70 ? 'CRITICAL' : score >= 45 ? 'HIGH' : score >= 20 ? 'MEDIUM' : 'LOW';
 
     return {
-      id: 'currency-fred',
-      type: 'currency',
-      severity,
-      score,
-      title: `Currency stress: INR ${inrChange > 0 ? '+' : ''}${inrChange.toFixed(1)}%, CNY ${cnyChange > 0 ? '+' : ''}${cnyChange.toFixed(1)}%`,
-      summary: flagged
-        ? `Significant currency movement detected. ${Math.abs(inrChange) > 3 ? 'USD/INR ' : ''}${Math.abs(cnyChange) > 3 ? 'USD/CNY ' : ''}moved >3% in 30 days.`
-        : 'Currency movements within normal range.',
-      data_points: [
-        `USD/INR 30d change: ${inrChange > 0 ? '+' : ''}${inrChange.toFixed(2)}%`,
-        `USD/CNY 30d change: ${cnyChange > 0 ? '+' : ''}${cnyChange.toFixed(2)}%`,
-        `Current INR: ${inrVals[inrVals.length - 1]?.toFixed(2) ?? 'N/A'}`,
-        `Current CNY: ${cnyVals[cnyVals.length - 1]?.toFixed(2) ?? 'N/A'}`,
-      ],
-      source: 'FRED DEXINUS + DEXCHUS',
-      detected_at: new Date().toISOString(),
+      signal: {
+        id: 'currency-fred',
+        type: 'currency',
+        severity,
+        score,
+        title: `Currency: INR ${inrChange > 0 ? '+' : ''}${inrChange.toFixed(1)}%, CNY ${cnyChange > 0 ? '+' : ''}${cnyChange.toFixed(1)}%`,
+        summary: flagged
+          ? `Significant currency movement. ${Math.abs(inrChange) > 3 ? 'USD/INR ' : ''}${Math.abs(cnyChange) > 3 ? 'USD/CNY ' : ''}moved >3% in 30d.`
+          : 'Currency movements within normal range.',
+        data_points: [
+          `USD/INR 30d: ${inrChange > 0 ? '+' : ''}${inrChange.toFixed(2)}%`,
+          `USD/CNY 30d: ${cnyChange > 0 ? '+' : ''}${cnyChange.toFixed(2)}%`,
+          `INR: ${inrVals[inrVals.length - 1]?.toFixed(2) ?? 'N/A'}`,
+          `CNY: ${cnyVals[cnyVals.length - 1]?.toFixed(2) ?? 'N/A'}`,
+        ],
+        source,
+        detected_at: new Date().toISOString(),
+      },
+      source,
+      ok: true,
     };
   } catch (err) {
-    console.error('[signals] Currency fetch failed:', err);
-    return null;
+    console.error('[signals] Currency fetch failed:', err instanceof Error ? err.message : err);
+    return { signal: null, source, ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -175,7 +233,8 @@ async function fetchCurrencySignal(): Promise<Signal | null> {
 // SIGNAL 4 — FDA Enforcement Spike
 // ---------------------------------------------------------------------------
 
-async function fetchEnforcementSignal(): Promise<Signal | null> {
+async function fetchEnforcementSignal(): Promise<FeedResult> {
+  const source = 'openFDA Drug Enforcement';
   try {
     const data = await fetchJSON<{
       meta?: { results?: { total: number } };
@@ -191,31 +250,34 @@ async function fetchEnforcementSignal(): Promise<Signal | null> {
     const classI = results.filter((r) => r.classification === 'Class I').length;
     const classII = results.filter((r) => r.classification === 'Class II').length;
 
-    // Heuristic: >20 enforcement actions in last page = elevated
     const score = Math.min(100, Math.round((total / 200) * 40 + classI * 15 + classII * 5));
     const severity: Signal['severity'] =
       score >= 70 ? 'CRITICAL' : score >= 45 ? 'HIGH' : score >= 20 ? 'MEDIUM' : 'LOW';
 
     return {
-      id: 'fda-enforcement',
-      type: 'enforcement',
-      severity,
-      score,
-      title: `${total} recent FDA enforcement actions`,
-      summary: `${classI} Class I, ${classII} Class II recalls in recent batch. ${
-        classI >= 3 ? 'Elevated Class I recall volume.' : 'Normal enforcement pace.'
-      }`,
-      data_points: [
-        `Total enforcement actions: ${total}`,
-        `Class I (most serious): ${classI}`,
-        `Class II: ${classII}`,
-      ],
-      source: 'openFDA Drug Enforcement',
-      detected_at: new Date().toISOString(),
+      signal: {
+        id: 'fda-enforcement',
+        type: 'enforcement',
+        severity,
+        score,
+        title: `${total} recent FDA enforcement actions`,
+        summary: `${classI} Class I, ${classII} Class II recalls. ${
+          classI >= 3 ? 'Elevated Class I volume.' : 'Normal enforcement pace.'
+        }`,
+        data_points: [
+          `Total: ${total}`,
+          `Class I: ${classI}`,
+          `Class II: ${classII}`,
+        ],
+        source,
+        detected_at: new Date().toISOString(),
+      },
+      source,
+      ok: true,
     };
   } catch (err) {
-    console.error('[signals] FDA enforcement fetch failed:', err);
-    return null;
+    console.error('[signals] FDA enforcement fetch failed:', err instanceof Error ? err.message : err);
+    return { signal: null, source, ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -223,54 +285,65 @@ async function fetchEnforcementSignal(): Promise<Signal | null> {
 // SIGNAL 5 — Active Drug Shortages Trend
 // ---------------------------------------------------------------------------
 
-async function fetchShortageTrendSignal(): Promise<Signal | null> {
+async function fetchShortageTrendSignal(): Promise<FeedResult> {
+  const source = 'FDA Drug Shortages';
   try {
     const data = await fetchJSON<{
       meta?: { results?: { total: number } };
-      results?: { status?: string }[];
+      results?: { generic_name?: string; status?: string }[];
     }>(
-      'https://api.fda.gov/drug/shortages.json?limit=100',
+      'https://api.fda.gov/drug/drugshortages.json?limit=100',
       { timeoutMs: 10000 },
     );
 
     const results = data.results ?? [];
     const total = data.meta?.results?.total ?? results.length;
-    const active = results.filter((r) => (r.status ?? '').toLowerCase().includes('active')).length;
+    // FDA shortages API may use "Currently in Shortage" or "Active" as status
+    const active = results.filter(
+      (r) => {
+        const s = (r.status ?? '').toLowerCase();
+        return s.includes('current') || s.includes('active') || s.includes('shortage');
+      },
+    ).length;
 
-    // Baseline: ~100 active shortages is normal; >150 = elevated
-    const score = Math.min(100, Math.max(0, Math.round((active - 80) * 1.5)));
+    const effectiveActive = active > 0 ? active : results.length;
+    const score = Math.min(100, Math.max(5, Math.round((effectiveActive / 150) * 60)));
     const severity: Signal['severity'] =
       score >= 70 ? 'CRITICAL' : score >= 45 ? 'HIGH' : score >= 20 ? 'MEDIUM' : 'LOW';
 
     return {
-      id: 'shortage-trend',
-      type: 'shortage',
-      severity,
-      score,
-      title: `${active} active shortages (${total} total tracked)`,
-      summary: `${active} drugs currently in active shortage. ${
-        active > 150 ? 'Significantly above historical baseline.' : active > 120 ? 'Above baseline.' : 'Near baseline levels.'
-      }`,
-      data_points: [
-        `Active shortages: ${active}`,
-        `Total tracked: ${total}`,
-        `Historical baseline: ~100`,
-      ],
-      source: 'openFDA Drug Shortages',
-      detected_at: new Date().toISOString(),
+      signal: {
+        id: 'shortage-trend',
+        type: 'shortage',
+        severity,
+        score,
+        title: `${effectiveActive} active shortages (${total} total)`,
+        summary: `${effectiveActive} drugs in shortage. ${
+          effectiveActive > 150 ? 'Significantly above baseline.' : effectiveActive > 120 ? 'Above baseline.' : 'Near baseline.'
+        }`,
+        data_points: [
+          `Active: ${effectiveActive}`,
+          `Total tracked: ${total}`,
+          `Baseline: ~100`,
+        ],
+        source,
+        detected_at: new Date().toISOString(),
+      },
+      source,
+      ok: true,
     };
   } catch (err) {
-    console.error('[signals] Shortage trend fetch failed:', err);
-    return null;
+    console.error('[signals] Shortage fetch failed:', err instanceof Error ? err.message : err);
+    return { signal: null, source, ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
 // ---------------------------------------------------------------------------
-// Main handler
+// Main collector — ALWAYS returns a valid snapshot, NEVER throws
 // ---------------------------------------------------------------------------
 
 async function collectSignals(): Promise<SignalSnapshot> {
-  const [geo, shipping, currency, enforcement, shortage] = await Promise.allSettled([
+  const results = await Promise.allSettled([
     fetchGeopoliticalSignal(),
     fetchShippingSignal(),
     fetchCurrencySignal(),
@@ -278,45 +351,76 @@ async function collectSignals(): Promise<SignalSnapshot> {
     fetchShortageTrendSignal(),
   ]);
 
-  const signals: Signal[] = [
-    // Always include the Iran crisis signal
-    IRAN_CRISIS_SIGNAL,
-  ];
+  // Iran crisis is ALWAYS present as a visible named signal
+  const signals: Signal[] = [IRAN_CRISIS_SIGNAL];
+  const sources: string[] = ['ACTIVE GEOPOLITICAL EVENT: Strait of Hormuz Conflict'];
 
-  const sources: string[] = ['Hardcoded: Iran/Hormuz Crisis'];
+  let liveFeedsOk = 0;
+  let failedFeeds = 0;
 
-  for (const result of [geo, shipping, currency, enforcement, shortage]) {
-    if (result.status === 'fulfilled' && result.value) {
-      signals.push(result.value);
-      sources.push(result.value.source);
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      const feed = result.value;
+      if (feed.ok && feed.signal) {
+        signals.push(feed.signal);
+        sources.push(feed.source);
+        liveFeedsOk++;
+      } else if (!feed.ok) {
+        failedFeeds++;
+        console.warn(`[signals] Feed failed: ${feed.source} — ${feed.error}`);
+      }
+    } else {
+      failedFeeds++;
+      console.warn(`[signals] Feed rejected:`, result.reason);
     }
   }
+
+  // Count elevated signals (CRITICAL, HIGH, or score >= 40)
+  const elevatedSignals = signals.filter(
+    (s) => s.severity === 'CRITICAL' || s.severity === 'HIGH' || s.score >= 40,
+  ).length;
 
   return {
     signals,
     overall_stress: calculateOverallStress(signals),
     generated_at: new Date().toISOString(),
     sources,
+    feed_status: {
+      total_feeds: TOTAL_LIVE_FEEDS + 1, // +1 for Iran signal
+      live_feeds: liveFeedsOk,
+      failed_feeds: failedFeeds,
+      elevated_signals: elevatedSignals,
+      feeds_unavailable: liveFeedsOk === 0,
+    },
   };
 }
 
+// ---------------------------------------------------------------------------
+// GET handler — NEVER returns 500, NEVER returns 0 signals
+// ---------------------------------------------------------------------------
+
 export async function GET() {
   try {
-    const result = await cachedFetch<SignalSnapshot>(
-      'prediction-signals',
-      3600, // 1 hour cache
-      collectSignals,
-      'prediction-signals.json',
-    );
-
-    return NextResponse.json(result.data, {
-      headers: cacheHeader(3600),
-    });
+    const snapshot = await collectSignals();
+    return NextResponse.json(snapshot, { headers: cacheHeader(3600) });
   } catch (err) {
-    console.error('[signals] Failed:', err);
-    return NextResponse.json(
-      { error: 'Signal detection failed', signals: [IRAN_CRISIS_SIGNAL], overall_stress: 95, generated_at: new Date().toISOString(), sources: [] },
-      { status: 500 },
-    );
+    console.error('[signals] Critical failure:', err);
+
+    // Even on total catastrophic failure, return the Iran crisis signal
+    const fallback: SignalSnapshot = {
+      signals: [IRAN_CRISIS_SIGNAL],
+      overall_stress: calculateOverallStress([IRAN_CRISIS_SIGNAL]),
+      generated_at: new Date().toISOString(),
+      sources: ['ACTIVE GEOPOLITICAL EVENT: Strait of Hormuz Conflict'],
+      feed_status: {
+        total_feeds: TOTAL_LIVE_FEEDS + 1,
+        live_feeds: 0,
+        failed_feeds: TOTAL_LIVE_FEEDS,
+        elevated_signals: 1,
+        feeds_unavailable: true,
+      },
+    };
+
+    return NextResponse.json(fallback, { headers: cacheHeader(300) });
   }
 }

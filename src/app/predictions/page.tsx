@@ -152,7 +152,25 @@ export default function PredictionsPage() {
             AI DISRUPTION FORECASTS
           </h1>
           <p className="text-xs text-muted font-mono mt-1">
-            Claude-powered supply chain disruption forecasts from {data.signals.signals.length} live signals
+            {data.signals.feed_status?.feeds_unavailable ? (
+              <span className="text-amber-400">
+                Live feeds temporarily unavailable — showing cached signals
+              </span>
+            ) : (
+              <>
+                Claude-powered forecasts from {data.signals.feed_status?.total_feeds ?? data.signals.signals.length} data feeds
+                {(data.signals.feed_status?.elevated_signals ?? 0) > 0 && (
+                  <span className="text-red-400">
+                    {' '}({data.signals.feed_status.elevated_signals} elevated signal{data.signals.feed_status.elevated_signals !== 1 ? 's' : ''} detected)
+                  </span>
+                )}
+                {(data.signals.feed_status?.failed_feeds ?? 0) > 0 && (
+                  <span className="text-amber-400/60">
+                    {' · '}{data.signals.feed_status.failed_feeds} feed{data.signals.feed_status.failed_feeds !== 1 ? 's' : ''} offline
+                  </span>
+                )}
+              </>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">

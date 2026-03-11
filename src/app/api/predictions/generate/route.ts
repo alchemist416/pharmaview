@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
-import { cachedFetch, cacheHeader } from '@/lib/liveData';
+import { cacheHeader } from '@/lib/liveData';
 import { supabase } from '@/lib/supabase';
-import { SignalSnapshot, Forecast, ForecastSnapshot } from '@/lib/signals';
+import { IRAN_CRISIS_SIGNAL, SignalSnapshot, Forecast, ForecastSnapshot, calculateOverallStress } from '@/lib/signals';
 
 export const dynamic = 'force-dynamic';
 
@@ -204,56 +204,49 @@ async function storeInSupabase(snapshot: ForecastSnapshot) {
   }
 }
 
+function buildFallbackSnapshot(): ForecastSnapshot {
+  return {
+    forecasts: getHardcodedForecasts(),
+    signals: {
+      signals: [IRAN_CRISIS_SIGNAL],
+      overall_stress: calculateOverallStress([IRAN_CRISIS_SIGNAL]),
+      generated_at: new Date().toISOString(),
+      sources: ['ACTIVE GEOPOLITICAL EVENT: Strait of Hormuz Conflict'],
+      feed_status: {
+        total_feeds: 6,
+        live_feeds: 0,
+        failed_feeds: 5,
+        elevated_signals: 1,
+        feeds_unavailable: true,
+      },
+    },
+    generated_at: new Date().toISOString(),
+    critical_alert: 'US-Iran Military Conflict — Strait of Hormuz Closure',
+  };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const baseUrl = request.nextUrl.origin;
+    const signals = await fetchSignals(baseUrl);
+    const forecasts = await generateForecasts(signals);
 
-    const result = await cachedFetch<ForecastSnapshot>(
-      'prediction-forecasts',
-      3600, // 1 hour cache
-      async () => {
-        const signals = await fetchSignals(baseUrl);
-        const forecasts = await generateForecasts(signals);
+    const criticalSignals = signals.signals.filter((s) => s.severity === 'CRITICAL');
+    const snapshot: ForecastSnapshot = {
+      forecasts,
+      signals,
+      generated_at: new Date().toISOString(),
+      critical_alert: criticalSignals.length > 0 ? criticalSignals[0].title : null,
+    };
 
-        const criticalSignals = signals.signals.filter((s) => s.severity === 'CRITICAL');
-        const criticalAlert =
-          criticalSignals.length > 0
-            ? `${criticalSignals[0].title}`
-            : null;
+    storeInSupabase(snapshot);
 
-        const snapshot: ForecastSnapshot = {
-          forecasts,
-          signals,
-          generated_at: new Date().toISOString(),
-          critical_alert: criticalAlert,
-        };
-
-        // Fire-and-forget store
-        storeInSupabase(snapshot);
-
-        return snapshot;
-      },
-      'prediction-forecasts.json',
-    );
-
-    return NextResponse.json(result.data, {
+    return NextResponse.json(snapshot, {
       headers: cacheHeader(3600),
     });
   } catch (err) {
     console.error('[generate] Failed:', err);
-    // Return hardcoded forecasts as fallback
-    const fallback: ForecastSnapshot = {
-      forecasts: getHardcodedForecasts(),
-      signals: {
-        signals: [],
-        overall_stress: 95,
-        generated_at: new Date().toISOString(),
-        sources: [],
-      },
-      generated_at: new Date().toISOString(),
-      critical_alert: 'US-Iran Military Conflict — Strait of Hormuz Closure',
-    };
-    return NextResponse.json(fallback, { status: 200 });
+    return NextResponse.json(buildFallbackSnapshot(), { status: 200 });
   }
 }
 

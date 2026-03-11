@@ -19,6 +19,13 @@ export interface SignalSnapshot {
   overall_stress: number; // 0-100
   generated_at: string;
   sources: string[];
+  feed_status: {
+    total_feeds: number;
+    live_feeds: number;
+    failed_feeds: number;
+    elevated_signals: number;
+    feeds_unavailable: boolean;
+  };
 }
 
 export interface Forecast {
