@@ -1,14 +1,10 @@
-name: Refresh Trade Flows Data
+name: "[DISABLED] Refresh Trade Flows Data"
+# DECOMMISSIONED - Project shut down 2026-03-19
 on:
-  schedule:
-    - cron: '0 0 * * 1'  # Every Monday at midnight UTC
   workflow_dispatch:
 jobs:
-  refresh:
+  disabled:
+    if: false
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger refresh
-        run: |
-          curl -X GET \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            https://${{ secrets.VERCEL_URL }}/api/cron/refresh-tradeflows
+      - run: echo "This workflow has been decommissioned."
